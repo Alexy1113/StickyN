@@ -62,19 +62,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        // Try to get ID from intent
-        appWidgetId = intent?.getIntExtra(
+        val currentIntent = intent ?: return
+
+        appWidgetId = currentIntent.getIntExtra(
             AppWidgetManager.EXTRA_APPWIDGET_ID,
             AppWidgetManager.INVALID_APPWIDGET_ID
-        ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
+        )
 
-        // Fallback: If opened from Launcher, pick the first existing widget
-        if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
+        // Fallback for LAUNCHER activity ONLY.
+        // A launcher intent has the action MAIN. A widget intent has a custom action.
+        if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID && currentIntent.action == Intent.ACTION_MAIN) {
             val appWidgetManager = AppWidgetManager.getInstance(this)
             val provider = ComponentName(this, StickyNoteWidget::class.java)
             val ids = appWidgetManager.getAppWidgetIds(provider)
             if (ids.isNotEmpty()) {
-                appWidgetId = ids[0]
+                appWidgetId = ids[0] // Use the first widget as a default for launcher opens
             }
         }
 

@@ -66,8 +66,9 @@ fun updateAppWidget(
     views.setViewVisibility(R.id.widget_title_text, View.VISIBLE)
     views.setTextColor(R.id.widget_title_text, textColor)
     
-    // Fixed logic: Show custom title or "Title" placeholder if empty
-    val displayTitle = if (widgetTitle.isNullOrBlank()) "Title" else widgetTitle
+    // If widgetTitle is blank, we can show nothing or a subtle placeholder. 
+    // To avoid it constantly saying "Title", let's use the actual value if present.
+    val displayTitle = if (widgetTitle.isNullOrBlank()) "" else widgetTitle
     views.setTextViewText(R.id.widget_title_text, displayTitle)
     
     views.setTextColor(R.id.appwidget_text, textColor)
@@ -87,14 +88,14 @@ fun updateAppWidget(
 
     val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
 
-    // Edit Note Intent - Added unique action to differentiate PendingIntents
+    // Edit Note Intent - Using a Data URI to make the PendingIntent unique per widget
     val editIntent = Intent(context, MainActivity::class.java).apply {
-        action = "com.example.stickyn.ACTION_EDIT_$appWidgetId"
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        data = "widget://note/$appWidgetId".toUri()
     }
 
-    // Template for ListView items (Set to mutable to allow clicking items, but we'll remove it if you strictly only want the button)
+    // Template for ListView items
     val templatePendingIntent = PendingIntent.getActivity(
         context,
         appWidgetId,
@@ -103,7 +104,7 @@ fun updateAppWidget(
     )
     views.setPendingIntentTemplate(R.id.widget_list_view, templatePendingIntent)
 
-    // Set click listener for the new Edit Button
+    // Set click listener for the Edit Button
     val directEditPendingIntent = PendingIntent.getActivity(
         context,
         appWidgetId + 200,
@@ -112,14 +113,14 @@ fun updateAppWidget(
     )
     views.setOnClickPendingIntent(R.id.button_edit_note, directEditPendingIntent)
 
-    // Remove direct clicks from Title or Empty View as requested
+    // Ensure Title area doesn't trigger edit anymore
     views.setOnClickPendingIntent(R.id.widget_title_text, null)
     views.setOnClickPendingIntent(R.id.appwidget_text, null)
 
     // New Note Button
     val pinIntent = Intent(context, PinWidgetActivity::class.java).apply {
-        action = "com.example.stickyn.ACTION_PIN_$appWidgetId"
         flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        data = "widget://pin/$appWidgetId".toUri()
     }
     val pinPendingIntent = PendingIntent.getActivity(
         context, appWidgetId + 300, pinIntent, PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag
@@ -128,9 +129,9 @@ fun updateAppWidget(
 
     // Settings Button
     val settingsIntent = Intent(context, SettingsActivity::class.java).apply {
-        action = "com.example.stickyn.ACTION_SETTINGS_$appWidgetId"
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        data = "widget://settings/$appWidgetId".toUri()
     }
     val settingsPendingIntent = PendingIntent.getActivity(
         context,

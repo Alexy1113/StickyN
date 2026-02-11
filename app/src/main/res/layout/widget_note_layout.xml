@@ -7,56 +7,56 @@
     android:background="@color/widget_background"
     android:id="@+id/widget_layout">
 
-    <LinearLayout
+    <RelativeLayout
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
         android:layout_height="48dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
         android:layout_alignParentTop="true">
 
         <ImageButton
             android:id="@+id/button_add_note"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentStart="true"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_input_add"
             android:contentDescription="@string/new_note"
-            android:padding="8dp"
+            android:padding="12dp"
             android:scaleType="centerInside"
             app:tint="@color/widget_text" />
 
         <TextView
             android:id="@+id/widget_title_text"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_weight="1"
+            android:layout_toEndOf="@id/button_add_note"
+            android:layout_toStartOf="@id/button_menu"
             android:gravity="center"
-            android:text="@string/title"
             android:textColor="@color/widget_text"
             android:textSize="16sp"
             android:textStyle="bold"
             android:singleLine="true"
-            android:ellipsize="end"
-            android:visibility="visible" />
+            android:ellipsize="end" />
 
         <ImageButton
             android:id="@+id/button_menu"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentEnd="true"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_manage"
             android:contentDescription="@string/menu"
-            android:padding="8dp"
+            android:padding="12dp"
             android:scaleType="centerInside"
             app:tint="@color/widget_text" />
-    </LinearLayout>
+    </RelativeLayout>
 
     <ListView
         android:id="@+id/widget_list_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/widget_header"
+        android:layout_alignParentBottom="true"
         android:divider="@null"
         android:dividerHeight="0dp"
         android:scrollbars="vertical" />
@@ -74,8 +74,8 @@
 
     <ImageButton
         android:id="@+id/button_edit_note"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:layout_alignParentEnd="true"
         android:layout_alignParentBottom="true"
         android:layout_marginEnd="0dp"
@@ -83,7 +83,7 @@
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_edit"
         android:contentDescription="@string/edit_note"
-        android:padding="8dp"
+        android:padding="12dp"
         android:scaleType="centerInside"
         app:tint="@color/widget_text" />
 

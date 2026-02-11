@@ -15,7 +15,7 @@ class WidgetService : RemoteViewsService() {
 
 class WidgetItemFactory(
     private val context: Context,
-    private val intent: Intent
+    intent: Intent
 ) : RemoteViewsService.RemoteViewsFactory {
 
     private var noteText: String = ""
@@ -29,11 +29,11 @@ class WidgetItemFactory(
     override fun onDataSetChanged() {
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
+        // Removed the updateAppWidget call to prevent an infinite refresh loop
     }
 
     override fun onDestroy() {}
 
-    // Only show item if text is not empty, otherwise ListView empty view kicks in
     override fun getCount(): Int = if (noteText.isEmpty()) 0 else 1
 
     override fun getViewAt(position: Int): RemoteViews {
@@ -45,11 +45,11 @@ class WidgetItemFactory(
         
         val textColor = when (themeMode) {
             "dark" -> "#FFFFFF".toColorInt()
+            "matrix" -> "#00FF41".toColorInt()
             else -> "#000000".toColorInt()
         }
         views.setTextColor(R.id.item_text, textColor)
 
-        // Important: Use fillInIntent to pass the widget ID to the template
         val fillInIntent = Intent().apply {
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         }
