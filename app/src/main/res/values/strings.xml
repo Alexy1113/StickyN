@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">StickyN</string>
+    <string name="title">Title</string>
+    <string name="empty_note">Empty note</string>
+    <string name="menu">Menu</string>
+    <string name="note_title_hint">Note Title</string>
+    <string name="note_content_hint">Type your note here</string>
+    <string name="save">Save</string>
+    <string name="widget_settings">Widget Settings</string>
+    <string name="choose_theme">Choose Theme:</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_matrix">Matrix (Neon Green)</string>
+    <string name="apply">Apply</string>
+    <string name="new_note">New Note</string>
+    <string name="edit_note">Edit Note</string>
+</resources>

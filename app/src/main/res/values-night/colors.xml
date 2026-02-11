@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sticky Note Colors for Dark Mode -->
+    <color name="widget_background">#333333</color>
+    <color name="widget_text">#FFFFFF</color>
+    <color name="app_background">#121212</color>
+</resources>
