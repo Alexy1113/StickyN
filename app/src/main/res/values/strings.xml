@@ -14,4 +14,12 @@
     <string name="apply">Apply</string>
     <string name="new_note">New Note</string>
     <string name="edit_note">Edit Note</string>
+    <string name="bold">Bold</string>
+    <string name="italic">Italic</string>
+    <string name="underline">Underline</string>
+    <string name="strikethrough">Strikethrough</string>
+    <string name="bullet_list">Bullet List</string>
+    <string name="add_image">Add Image</string>
+    <string name="home_title">StickyN Home</string>
+    <string name="home_instruction">Add a widget to your home screen to start creating sticky notes!</string>
 </resources>

@@ -7,13 +7,5 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-
-    <!-- Matrix Colors -->
-    <color name="matrix_background">#000000</color>
-    <color name="matrix_neon_green">#00FF41</color>
-
-    <!-- Sticky Note Colors -->
-    <color name="widget_background">#FFFFDD</color>
-    <color name="widget_text">#000000</color>
-    <color name="app_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#090909</color>
 </resources>

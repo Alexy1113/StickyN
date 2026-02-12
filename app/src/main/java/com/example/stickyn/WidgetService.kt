@@ -3,6 +3,7 @@ package com.example.stickyn
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
+import android.text.Html
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import androidx.core.graphics.toColorInt
@@ -19,7 +20,7 @@ class WidgetItemFactory(
 ) : RemoteViewsService.RemoteViewsFactory {
 
     private var noteText: String = ""
-    private var appWidgetId: Int = intent.getIntExtra(
+    private val appWidgetId: Int = intent.getIntExtra(
         AppWidgetManager.EXTRA_APPWIDGET_ID,
         AppWidgetManager.INVALID_APPWIDGET_ID
     )
@@ -27,9 +28,9 @@ class WidgetItemFactory(
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
+        // Use applicationContext and explicit pref name for absolute consistency
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
-        // Removed the updateAppWidget call to prevent an infinite refresh loop
     }
 
     override fun onDestroy() {}
@@ -38,7 +39,13 @@ class WidgetItemFactory(
 
     override fun getViewAt(position: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_note_item)
-        views.setTextViewText(R.id.item_text, noteText)
+        
+        val formattedText = if (noteText.isNotEmpty()) {
+            Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY)
+        } else {
+            ""
+        }
+        views.setTextViewText(R.id.item_text, formattedText)
         
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         val themeMode = sharedPrefs.getString("widget_theme_mode", "light")
@@ -59,10 +66,7 @@ class WidgetItemFactory(
     }
 
     override fun getLoadingView(): RemoteViews? = null
-
     override fun getViewTypeCount(): Int = 1
-
     override fun getItemId(position: Int): Long = position.toLong()
-
     override fun hasStableIds(): Boolean = true
 }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- State when the button is toggled on -->
+    <item android:state_activated="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#27000000" /> <!-- Semi-transparent black for a darkening effect -->
+            <corners android:radius="4dp" />
+        </shape>
+    </item>
+    <!-- Default, untoggled state -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>
