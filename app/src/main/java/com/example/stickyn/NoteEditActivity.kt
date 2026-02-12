@@ -1,11 +1,8 @@
 package com.example.stickyn
 
 import android.appwidget.AppWidgetManager
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Editable
@@ -60,7 +57,7 @@ class NoteEditActivity : AppCompatActivity() {
 
         buttonSave.setOnClickListener {
             val titleText = editTitle.text.toString()
-            val noteText = Html.toHtml(editTextNote.text)
+            val noteText = Html.toHtml(editTextNote.text, Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE)
             
             if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                 sharedPrefs.edit(commit = true) {
@@ -141,13 +138,12 @@ class NoteEditActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 if (count > before) {
-                    val addedTextStart = start
                     val addedTextEnd = start + count
                     val spannable = editTextNote.text
-                    if (isBold) spannable.setSpan(StyleSpan(Typeface.BOLD), addedTextStart, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    if (isItalic) spannable.setSpan(StyleSpan(Typeface.ITALIC), addedTextStart, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    if (isUnderline) spannable.setSpan(UnderlineSpan(), addedTextStart, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    if (isStrikethrough) spannable.setSpan(StrikethroughSpan(), addedTextStart, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    if (isBold) spannable.setSpan(StyleSpan(Typeface.BOLD), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    if (isItalic) spannable.setSpan(StyleSpan(Typeface.ITALIC), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    if (isUnderline) spannable.setSpan(UnderlineSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    if (isStrikethrough) spannable.setSpan(StrikethroughSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
             override fun afterTextChanged(s: Editable?) {}
@@ -215,6 +211,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun updateWidget() {
         val appWidgetManager = AppWidgetManager.getInstance(this)
+        appWidgetManager.notifyAppWidgetViewDataChanged(intArrayOf(appWidgetId), R.id.widget_list_view)
         updateAppWidget(this, appWidgetManager, appWidgetId)
     }
 }

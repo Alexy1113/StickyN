@@ -46,7 +46,6 @@ fun updateAppWidget(
     val views = RemoteViews(context.packageName, R.layout.widget_note_layout)
     val sharedPrefs = context.applicationContext.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
     
-    // Retrieve title. Default to empty string to avoid "Title" conflict.
     val widgetTitle = sharedPrefs.getString("widget_title_$appWidgetId", "")
     val themeMode = sharedPrefs.getString("widget_theme_mode", "light")
 
@@ -68,7 +67,6 @@ fun updateAppWidget(
     views.setInt(R.id.button_add_note, "setColorFilter", textColor)
     views.setInt(R.id.button_edit_note, "setColorFilter", textColor)
 
-    // Set Title: No more "Title" word conflict. It shows your text or remains empty.
     views.setTextViewText(R.id.widget_title_text, widgetTitle ?: "")
     views.setViewVisibility(R.id.widget_title_text, View.VISIBLE)
 
@@ -76,13 +74,12 @@ fun updateAppWidget(
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         data = "widget://service/$appWidgetId".toUri()
     }
-    @Suppress("DEPRECATION")
-    views.setRemoteAdapter(R.id.widget_list_view, serviceIntent)
+    
+    views.setRemoteAdapter(appWidgetId, R.id.widget_list_view, serviceIntent)
     views.setEmptyView(R.id.widget_list_view, R.id.appwidget_text)
 
     val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
 
-    // Unique Intents per widget instance
     val editIntent = Intent(context, NoteEditActivity::class.java).apply {
         action = "com.example.stickyn.ACTION_EDIT_$appWidgetId"
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -116,5 +113,4 @@ fun updateAppWidget(
     views.setOnClickPendingIntent(R.id.button_menu, settingsPendingIntent)
 
     appWidgetManager.updateAppWidget(appWidgetId, views)
-    appWidgetManager.notifyAppWidgetViewDataChanged(intArrayOf(appWidgetId), R.id.widget_list_view)
 }
