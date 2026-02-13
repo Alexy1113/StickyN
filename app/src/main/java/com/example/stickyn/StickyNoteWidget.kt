@@ -94,15 +94,17 @@ fun updateAppWidget(
         ""
     }
     views.setTextViewText(R.id.widget_title_text, titleToDisplay)
-    views.setViewVisibility(R.id.widget_title_text, View.VISIBLE)
+    
+    // Fix: Ensure title is visible only if it's not empty, or keep it visible but empty
+    // Actually, if widgetTitle is empty, we might want to hide it or show hint
+    views.setViewVisibility(R.id.widget_title_text, if (widgetTitle.isNullOrEmpty()) View.GONE else View.VISIBLE)
 
     val serviceIntent = Intent(context, WidgetService::class.java).apply {
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         data = "widget://service/$appWidgetId".toUri()
     }
-
-    @Suppress("DEPRECATION")
-    views.setRemoteAdapter(appWidgetId, R.id.widget_list_view, serviceIntent)
+    
+    views.setRemoteAdapter(R.id.widget_list_view, serviceIntent)
     views.setEmptyView(R.id.widget_list_view, R.id.appwidget_text)
 
     val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0

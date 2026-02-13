@@ -140,6 +140,7 @@ class NoteEditActivity : AppCompatActivity() {
                 MotionEvent.ACTION_UP -> {
                     if (isScrolling) {
                         isScrolling = false
+                        v.performClick()
                         return@setOnTouchListener true
                     } else {
                         // Manual tap handling: move cursor without jumping/snapping
@@ -165,6 +166,7 @@ class NoteEditActivity : AppCompatActivity() {
                                 spans[0].onClick(editTextNote)
                             }
                         }
+                        v.performClick()
                         return@setOnTouchListener true
                     }
                 }
