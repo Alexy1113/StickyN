@@ -34,6 +34,22 @@ class StickyNoteWidget : AppWidgetProvider() {
             }
         }
     }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        
+        // This is a safety check. If for some reason the system is passing dummy data
+        // when pinning, we should ensure the NoteEditActivity handles it.
+        val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            val editIntent = Intent(context, NoteEditActivity::class.java).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                data = "widget://note/$appWidgetId".toUri()
+            }
+            context.startActivity(editIntent)
+        }
+    }
 }
 
 fun updateAppWidget(
@@ -46,6 +62,7 @@ fun updateAppWidget(
     val views = RemoteViews(context.packageName, R.layout.widget_note_layout)
     val sharedPrefs = context.applicationContext.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
     
+    // Ensure we default to an empty string if no data exists, rather than any dummy values.
     val widgetTitle = sharedPrefs.getString("widget_title_$appWidgetId", "")
     val themeMode = sharedPrefs.getString("widget_theme_mode", "light")
 

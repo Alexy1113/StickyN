@@ -90,13 +90,18 @@ class NoteEditActivity : AppCompatActivity() {
             val noteText = Html.toHtml(editTextNote.text, Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE)
             
             if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                sharedPrefs.edit(commit = true) {
+                val success = sharedPrefs.edit().apply {
                     putString("widget_title_$appWidgetId", titleText)
                     putString("saved_note_text_$appWidgetId", noteText)
+                }.commit()
+                
+                if (success) {
+                    updateWidget()
+                    Toast.makeText(this, "Note saved!", Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    Toast.makeText(this, "Failed to save to disk.", Toast.LENGTH_SHORT).show()
                 }
-                updateWidget()
-                Toast.makeText(this, "Note saved!", Toast.LENGTH_SHORT).show()
-                finish()
             } else {
                 Toast.makeText(this, "Error: Widget ID missing.", Toast.LENGTH_SHORT).show()
             }
@@ -144,7 +149,7 @@ class NoteEditActivity : AppCompatActivity() {
         try {
             val inputStream: InputStream? = contentResolver.openInputStream(uri)
             if (inputStream == null) {
-                Toast.makeText(this, "Could not open image file", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Could not open image", Toast.LENGTH_SHORT).show()
                 return
             }
             val bitmap = BitmapFactory.decodeStream(inputStream)
@@ -161,32 +166,34 @@ class NoteEditActivity : AppCompatActivity() {
                 val drawable = scaledBitmap.toDrawable(resources)
                 drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
 
-                var selectionStart = editTextNote.selectionStart
-                var selectionEnd = editTextNote.selectionEnd
-                if (selectionStart < 0) selectionStart = 0
-                if (selectionEnd < 0) selectionEnd = 0
+                val selectionStart = Math.max(0, editTextNote.selectionStart)
+                val selectionEnd = Math.max(0, editTextNote.selectionEnd)
                 
                 val builder = SpannableStringBuilder(editTextNote.text)
-                builder.replace(selectionStart, selectionEnd, " ")
+                
+                // Add more empty lines (3 before, 3 after) to make it easy to tap around the image
+                val insertionText = "\n\n\n \n\n\n"
+                builder.replace(selectionStart, selectionEnd, insertionText)
+                
+                val imageIndex = selectionStart + 3 // Index of the space ' ' in "\n\n\n \n\n\n"
                 
                 val imageSpan = ImageSpan(drawable, uri.toString())
-                builder.setSpan(imageSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                builder.setSpan(imageSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 
                 val clickableSpan = object : ClickableSpan() {
                     override fun onClick(widget: View) {
                         showFullscreenImage(uri)
                     }
                 }
-                builder.setSpan(clickableSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                builder.setSpan(clickableSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 
                 editTextNote.setText(builder)
-                editTextNote.setSelection(selectionStart + 1)
-            } else {
-                Toast.makeText(this, "Failed to decode image data", Toast.LENGTH_SHORT).show()
+                // Position cursor at the very end of the insertion
+                editTextNote.setSelection(selectionStart + insertionText.length)
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Error loading image", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -365,48 +372,54 @@ class NoteEditActivity : AppCompatActivity() {
     }
 
     private fun loadData() {
-        val savedTitle = sharedPrefs.getString("widget_title_$appWidgetId", "")
-        val savedNote = sharedPrefs.getString("saved_note_text_$appWidgetId", "")
-        editTitle.setText(savedTitle)
-        if (!savedNote.isNullOrEmpty()) {
-            val imageGetter = Html.ImageGetter { source ->
-                try {
-                    val uri = source.toUri()
-                    val inputStream = contentResolver.openInputStream(uri)
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    inputStream?.close()
-                    if (bitmap != null) {
-                        val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
-                        val drawable = scaledBitmap.toDrawable(resources)
-                        drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
-                        return@ImageGetter drawable
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-                null
-            }
+        val widgetTitleKey = "widget_title_$appWidgetId"
+        val noteTextKey = "saved_note_text_$appWidgetId"
+        
+        editTitle.setText("")
+        editTextNote.setText("")
 
-            val spanned = Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
-            val builder = SpannableStringBuilder(spanned)
-            
-            val imageSpans = builder.getSpans(0, builder.length, ImageSpan::class.java)
-            for (span in imageSpans) {
-                val start = builder.getSpanStart(span)
-                val end = builder.getSpanEnd(span)
-                val uriStr = span.source ?: continue
-                val uri = uriStr.toUri()
-                val clickableSpan = object : ClickableSpan() {
-                    override fun onClick(widget: View) {
-                        showFullscreenImage(uri)
+        if (sharedPrefs.contains(widgetTitleKey) || sharedPrefs.contains(noteTextKey)) {
+            val savedTitle = sharedPrefs.getString(widgetTitleKey, "")
+            val savedNote = sharedPrefs.getString(noteTextKey, "")
+            editTitle.setText(savedTitle)
+            if (!savedNote.isNullOrEmpty()) {
+                val imageGetter = Html.ImageGetter { source ->
+                    try {
+                        val uri = source.toUri()
+                        val inputStream = contentResolver.openInputStream(uri)
+                        val bitmap = BitmapFactory.decodeStream(inputStream)
+                        inputStream?.close()
+                        if (bitmap != null) {
+                            val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
+                            val drawable = scaledBitmap.toDrawable(resources)
+                            drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+                            return@ImageGetter drawable
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
+                    null
                 }
-                builder.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+                val spanned = Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+                val builder = SpannableStringBuilder(spanned)
+                
+                val imageSpans = builder.getSpans(0, builder.length, ImageSpan::class.java)
+                for (span in imageSpans) {
+                    val start = builder.getSpanStart(span)
+                    val end = builder.getSpanEnd(span)
+                    val uriStr = span.source ?: continue
+                    val uri = uriStr.toUri()
+                    val clickableSpan = object : ClickableSpan() {
+                        override fun onClick(widget: View) {
+                            showFullscreenImage(uri)
+                        }
+                    }
+                    builder.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                
+                editTextNote.setText(builder)
             }
-            
-            editTextNote.setText(builder)
-        } else {
-            editTextNote.setText("")
         }
     }
 
@@ -415,16 +428,14 @@ class NoteEditActivity : AppCompatActivity() {
         val componentName = ComponentName(this, StickyNoteWidget::class.java)
         val ids = appWidgetManager.getAppWidgetIds(componentName)
         
-        if (Build.VERSION.SDK_INT >= 35) {
-            for (id in ids) {
-                updateAppWidget(this, appWidgetManager, id)
-            }
-        } else {
-            @Suppress("DEPRECATION")
+        for (id in ids) {
+            updateAppWidget(this, appWidgetManager, id)
+        }
+
+        editTextNote.postDelayed({
             for (id in ids) {
                 appWidgetManager.notifyAppWidgetViewDataChanged(id, R.id.widget_list_view)
             }
-            updateAppWidget(this, appWidgetManager, appWidgetId)
-        }
+        }, 500)
     }
 }

@@ -5,6 +5,14 @@
     android:orientation="vertical"
     android:padding="4dp">
 
+    <TextView
+        android:id="@+id/item_text_top"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:visibility="gone"
+        android:layout_marginBottom="4dp" />
+
     <ImageView
         android:id="@+id/item_image"
         android:layout_width="match_parent"
@@ -16,10 +24,10 @@
         android:contentDescription="@null" />
 
     <TextView
-        android:id="@+id/item_text"
+        android:id="@+id/item_text_bottom"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="14sp"
-        android:textColor="@color/widget_text" />
+        android:visibility="gone" />
 
 </LinearLayout>
