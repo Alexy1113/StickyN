@@ -4,12 +4,12 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.text.Html
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import androidx.core.graphics.toColorInt
+import androidx.core.net.toUri
 import java.util.regex.Pattern
 
 class WidgetService : RemoteViewsService() {
@@ -48,7 +48,7 @@ class WidgetItemFactory(
         if (imgMatcher.find()) {
             val imgSource = imgMatcher.group(1)
             try {
-                val uri = Uri.parse(imgSource)
+                val uri = imgSource.toUri()
                 val inputStream = context.contentResolver.openInputStream(uri)
                 val bitmap = BitmapFactory.decodeStream(inputStream)
                 inputStream?.close()

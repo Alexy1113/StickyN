@@ -2,13 +2,14 @@ package com.example.stickyn
 
 import android.app.Dialog
 import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
-import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.Html
@@ -34,6 +35,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.edit
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.scale
+import androidx.core.net.toUri
 import java.io.InputStream
 
 class NoteEditActivity : AppCompatActivity() {
@@ -142,7 +146,7 @@ class NoteEditActivity : AppCompatActivity() {
 
                 if (bitmap != null) {
                     val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
-                    val drawable = BitmapDrawable(resources, scaledBitmap)
+                    val drawable = scaledBitmap.toDrawable(resources)
                     drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
 
                     val selectionStart = editTextNote.selectionStart
@@ -226,7 +230,7 @@ class NoteEditActivity : AppCompatActivity() {
         if (maxWidth <= 0 || bitmap.width <= maxWidth) return bitmap
         val aspectRatio = bitmap.height.toFloat() / bitmap.width.toFloat()
         val height = (maxWidth * aspectRatio).toInt()
-        return Bitmap.createScaledBitmap(bitmap, maxWidth, height, true)
+        return bitmap.scale(maxWidth, height, true)
     }
 
     private fun applySpanToSelection(span: Any) {
@@ -355,13 +359,13 @@ class NoteEditActivity : AppCompatActivity() {
         if (!savedNote.isNullOrEmpty()) {
             val imageGetter = Html.ImageGetter { source ->
                 try {
-                    val uri = Uri.parse(source)
+                    val uri = source.toUri()
                     val inputStream = contentResolver.openInputStream(uri)
                     val bitmap = BitmapFactory.decodeStream(inputStream)
                     inputStream?.close()
                     if (bitmap != null) {
                         val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
-                        val drawable = BitmapDrawable(resources, scaledBitmap)
+                        val drawable = scaledBitmap.toDrawable(resources)
                         drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
                         return@ImageGetter drawable
                     }
@@ -379,7 +383,7 @@ class NoteEditActivity : AppCompatActivity() {
             for (span in imageSpans) {
                 val start = builder.getSpanStart(span)
                 val end = builder.getSpanEnd(span)
-                val uri = Uri.parse(span.source)
+                val uri = span.source?.toUri() ?: continue
                 val clickableSpan = object : ClickableSpan() {
                     override fun onClick(widget: View) {
                         showFullscreenImage(uri)
@@ -396,7 +400,21 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun updateWidget() {
         val appWidgetManager = AppWidgetManager.getInstance(this)
-        appWidgetManager.notifyAppWidgetViewDataChanged(intArrayOf(appWidgetId), R.id.widget_list_view)
-        updateAppWidget(this, appWidgetManager, appWidgetId)
+        val componentName = ComponentName(this, StickyNoteWidget::class.java)
+        val ids = appWidgetManager.getAppWidgetIds(componentName)
+        
+        if (Build.VERSION.SDK_INT >= 35) {
+            // Android 15+: recommended way to signal collection data changes
+            for (id in ids) {
+                updateAppWidget(this, appWidgetManager, id)
+            }
+        } else {
+            // Older versions: use the stable deprecated method
+            @Suppress("DEPRECATION")
+            for (id in ids) {
+                appWidgetManager.notifyAppWidgetViewDataChanged(id, R.id.widget_list_view)
+            }
+            updateAppWidget(this, appWidgetManager, appWidgetId)
+        }
     }
 }

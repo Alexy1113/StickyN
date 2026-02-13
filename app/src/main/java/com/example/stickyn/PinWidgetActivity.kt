@@ -1,7 +1,9 @@
 package com.example.stickyn
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -11,8 +13,6 @@ import androidx.appcompat.app.AppCompatActivity
 class PinWidgetActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Use a transparent view to ensure the activity is considered "foreground"
         setContentView(View(this))
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -20,15 +20,32 @@ class PinWidgetActivity : AppCompatActivity() {
             val myProvider = ComponentName(this, StickyNoteWidget::class.java)
 
             if (appWidgetManager.isRequestPinAppWidgetSupported) {
-                appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                // Use the widget provider itself as the callback receiver
+                // This avoids needing a separate receiver in the Manifest
+                val successCallback = PendingIntent.getBroadcast(
+                    this, 
+                    0, 
+                    Intent(this, StickyNoteWidget::class.java), 
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                
+                val success = appWidgetManager.requestPinAppWidget(myProvider, null, successCallback)
+                if (success) {
+                    // Success doesn't mean it's pinned yet, just that the dialog was shown
+                } else {
+                    Toast.makeText(this, "Could not show Add to Home Screen dialog", Toast.LENGTH_SHORT).show()
+                }
             } else {
-                Toast.makeText(this, "Launcher pinning not supported", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Pinning not supported by your launcher", Toast.LENGTH_SHORT).show()
             }
+        } else {
+            Toast.makeText(this, "Android 8.0+ required for this feature", Toast.LENGTH_SHORT).show()
         }
         
-        // Give the system a moment to show the dialog before finishing
+        // Use a longer delay to ensure the system dialog has time to pop up 
+        // before this background activity closes.
         window.decorView.postDelayed({
-            finish()
-        }, 500)
+            if (!isFinishing) finish()
+        }, 1500)
     }
 }
