@@ -6,7 +6,6 @@
     <string name="note_title_hint">Note Title</string>
     <string name="note_content_hint">Type your note here</string>
     <string name="save">Save</string>
-    <string name="widget_settings">Widget Settings</string>
     <string name="choose_theme">Choose Theme:</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
@@ -21,9 +20,16 @@
     <string name="add_image">Add Image</string>
     <string name="home_title">StickyN Home</string>
     <string name="home_instruction">Add a widget to your home screen to start creating sticky notes!</string>
-    <string name="testing_version">Testing Version</string>
-    <string name="creator_aleksei_vassimov">Creator : Aleksei Vassimov</string>
     <string name="back">Back</string>
-    <string name="auto_theme">The app theme automatically follows your system\'s light/dark mode settings.</string>
-    <string name="scroll_tutorial">You can scroll widget text with a finger.</string>
+    <string name="readme">
+        <b>Widget Settings</b>\n
+         _______________\n\n
+        README:\n
+        \u2022 The app theme automatically matches your system’s <b>light or dark mode</b>.\n
+        \u2022 <b>Scroll</b> through your notes with a simple swipe.\n
+        \u2022 <b>Tap</b> an image to view it in full screen or delete it while editing.\n
+        _______________\n\n
+        <i>Beta Version</i>\n
+        Creator: <u>Aleksei Vassimov</u>
+    </string>
 </resources>

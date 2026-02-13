@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Build
+import android.text.SpannableString
+import android.text.style.UnderlineSpan
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.content.edit
@@ -84,14 +86,22 @@ fun updateAppWidget(
     views.setInt(R.id.button_add_note, "setColorFilter", textColor)
     views.setInt(R.id.button_edit_note, "setColorFilter", textColor)
 
-    views.setTextViewText(R.id.widget_title_text, widgetTitle ?: "")
+    val titleToDisplay = if (!widgetTitle.isNullOrEmpty()) {
+        SpannableString(widgetTitle).apply {
+            setSpan(UnderlineSpan(), 0, length, 0)
+        }
+    } else {
+        ""
+    }
+    views.setTextViewText(R.id.widget_title_text, titleToDisplay)
     views.setViewVisibility(R.id.widget_title_text, View.VISIBLE)
 
     val serviceIntent = Intent(context, WidgetService::class.java).apply {
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         data = "widget://service/$appWidgetId".toUri()
     }
-    
+
+    @Suppress("DEPRECATION")
     views.setRemoteAdapter(appWidgetId, R.id.widget_list_view, serviceIntent)
     views.setEmptyView(R.id.widget_list_view, R.id.appwidget_text)
 

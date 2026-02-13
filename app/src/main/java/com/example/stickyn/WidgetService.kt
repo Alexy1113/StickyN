@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.text.Html
-import android.text.Spanned
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -34,6 +33,7 @@ class WidgetItemFactory(
 
     override fun onDataSetChanged() {
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
+        // Redundant Elvis operator removed as getString with non-null default value returns non-null.
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
     }
 

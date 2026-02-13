@@ -17,57 +17,14 @@
         android:padding="24dp">
 
         <TextView
-            android:id="@+id/text_settings_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/widget_settings"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textStyle="bold"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <TextView
-            android:id="@+id/text_theme_info"
+            android:id="@+id/text_readme"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/auto_theme"
+            android:text="@string/readme"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_settings_title" />
-
-        <TextView
-            android:id="@+id/text_scroll_info"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/scroll_tutorial"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_theme_info" />
-
-        <TextView
-            android:id="@+id/text_testing_version"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/testing_version"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_scroll_info" />
-
-        <TextView
-            android:id="@+id/text_creator"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="@string/creator_aleksei_vassimov"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_testing_version"
+            app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toTopOf="@+id/button_back" />
 
         <com.google.android.material.button.MaterialButton
@@ -79,7 +36,7 @@
             android:text="@string/back"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/text_creator" />
+            app:layout_constraintTop_toBottomOf="@id/text_readme" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.cardview.widget.CardView>

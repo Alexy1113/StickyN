@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
@@ -15,15 +16,18 @@ import android.text.Editable
 import android.text.Html
 import android.text.Spannable
 import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextWatcher
-import android.text.method.LinkMovementMethod
+import android.text.method.ArrowKeyMovementMethod
 import android.text.style.ClickableSpan
 import android.text.style.ImageSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.Window
 import android.view.inputmethod.InputMethodManager
@@ -39,6 +43,8 @@ import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import java.io.InputStream
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -53,6 +59,13 @@ class NoteEditActivity : AppCompatActivity() {
     private var isUnderline = false
     private var isStrikethrough = false
     private var isBulletList = false
+
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var isScrolling = false
+    private var initialSelectionStart = -1
+    private var initialSelectionEnd = -1
+    private var touchSlop = 0
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let {
@@ -78,7 +91,98 @@ class NoteEditActivity : AppCompatActivity() {
         editTextNote = findViewById(R.id.edit_text_note)
         buttonSave = findViewById(R.id.button_save)
 
-        editTextNote.movementMethod = LinkMovementMethod.getInstance()
+        // Make title underlined in the editor too
+        editTitle.paintFlags = editTitle.paintFlags or Paint.UNDERLINE_TEXT_FLAG
+
+        touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+
+        // Use ArrowKeyMovementMethod but override touch for custom scroll behavior
+        editTextNote.movementMethod = ArrowKeyMovementMethod.getInstance()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            editTextNote.setOnDragListener(null)
+        }
+        
+        editTextNote.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastTouchX = event.x
+                    lastTouchY = event.y
+                    isScrolling = false
+                    initialSelectionStart = editTextNote.selectionStart
+                    initialSelectionEnd = editTextNote.selectionEnd
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - lastTouchX
+                    val dy = event.y - lastTouchY
+                    if (!isScrolling && sqrt(dx.pow(2) + dy.pow(2)) > touchSlop) {
+                        isScrolling = true
+                    }
+                    
+                    if (isScrolling) {
+                        // Manually scroll the view
+                        val scrollY = v.scrollY
+                        val targetY = (scrollY - dy).toInt()
+                        val visibleHeight = v.height - v.paddingTop - v.paddingBottom
+                        val maxScroll = (editTextNote.layout?.height ?: 0) - visibleHeight
+                        v.scrollTo(v.scrollX, targetY.coerceIn(0, maxScroll.coerceAtLeast(0)))
+                        
+                        lastTouchX = event.x
+                        lastTouchY = event.y
+                        
+                        // Keep cursor where it was before the gesture started
+                        if (initialSelectionStart >= 0) {
+                            editTextNote.setSelection(initialSelectionStart, initialSelectionEnd)
+                        }
+                        return@setOnTouchListener true
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (isScrolling) {
+                        isScrolling = false
+                        return@setOnTouchListener true
+                    } else {
+                        // Manual tap handling: move cursor without jumping/snapping
+                        val offset = getOffsetForPosition(event.x, event.y)
+                        val curX = editTextNote.scrollX
+                        val curY = editTextNote.scrollY
+                        
+                        editTextNote.requestFocus()
+                        editTextNote.setSelection(offset)
+                        
+                        // Use post to override the default "bring into view" behavior of setSelection
+                        editTextNote.post {
+                            editTextNote.scrollTo(curX, curY)
+                        }
+                        
+                        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                        imm.showSoftInput(editTextNote, InputMethodManager.SHOW_IMPLICIT)
+
+                        val text = editTextNote.text
+                        if (text is Spanned) {
+                            val spans = text.getSpans(offset, offset, ClickableSpan::class.java)
+                            if (spans.isNotEmpty()) {
+                                spans[0].onClick(editTextNote)
+                            }
+                        }
+                        return@setOnTouchListener true
+                    }
+                }
+            }
+            false
+        }
+
+        editTextNote.setOnLongClickListener {
+            val offset = getOffsetForPosition(lastTouchX, lastTouchY)
+            val text = editTextNote.text
+            if (text is Spanned) {
+                val spans = text.getSpans(offset, offset, ImageSpan::class.java)
+                if (spans.isNotEmpty()) {
+                    return@setOnLongClickListener true
+                }
+            }
+            false
+        }
 
         setupFormattingButtons()
         setupTextFormattingLogic()
@@ -106,6 +210,14 @@ class NoteEditActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error: Widget ID missing.", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun getOffsetForPosition(x: Float, y: Float): Int {
+        val layout = editTextNote.layout ?: return 0
+        val adjX = x - editTextNote.totalPaddingLeft + editTextNote.scrollX
+        val adjY = y - editTextNote.totalPaddingTop + editTextNote.scrollY
+        val line = layout.getLineForVertical(adjY.toInt())
+        return layout.getOffsetForHorizontal(line, adjX)
     }
 
     private fun setupFormattingButtons() {
@@ -166,16 +278,16 @@ class NoteEditActivity : AppCompatActivity() {
                 val drawable = scaledBitmap.toDrawable(resources)
                 drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
 
-                val selectionStart = Math.max(0, editTextNote.selectionStart)
-                val selectionEnd = Math.max(0, editTextNote.selectionEnd)
+                val selectionStart = editTextNote.selectionStart.coerceAtLeast(0)
+                val selectionEnd = editTextNote.selectionEnd.coerceAtLeast(0)
                 
                 val builder = SpannableStringBuilder(editTextNote.text)
                 
-                // Add more empty lines (3 before, 3 after) to make it easy to tap around the image
-                val insertionText = "\n\n\n \n\n\n"
+                // Add fewer empty lines (2 before, 3 after) as requested
+                val insertionText = "\n\n \n\n\n"
                 builder.replace(selectionStart, selectionEnd, insertionText)
                 
-                val imageIndex = selectionStart + 3 // Index of the space ' ' in "\n\n\n \n\n\n"
+                val imageIndex = selectionStart + 2
                 
                 val imageSpan = ImageSpan(drawable, uri.toString())
                 builder.setSpan(imageSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -188,7 +300,6 @@ class NoteEditActivity : AppCompatActivity() {
                 builder.setSpan(clickableSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 
                 editTextNote.setText(builder)
-                // Position cursor at the very end of the insertion
                 editTextNote.setSelection(selectionStart + insertionText.length)
             }
         } catch (e: Exception) {
@@ -289,6 +400,9 @@ class NoteEditActivity : AppCompatActivity() {
                     if (isUnderline) spannable.setSpan(UnderlineSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     if (isStrikethrough) spannable.setSpan(StrikethroughSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
+                if (count != before) {
+                    editTextNote.post { scrollToCursorIfNeeded() }
+                }
             }
             override fun afterTextChanged(s: Editable?) {}
         })
@@ -327,6 +441,29 @@ class NoteEditActivity : AppCompatActivity() {
                 }
             }
             false
+        }
+    }
+
+    private fun scrollToCursorIfNeeded() {
+        val layout = editTextNote.layout ?: return
+        val selectionStart = editTextNote.selectionStart
+        if (selectionStart < 0) return
+        
+        val line = layout.getLineForOffset(selectionStart)
+        val lineTop = layout.getLineTop(line)
+        val lineBottom = layout.getLineBottom(line)
+        
+        val currentScrollY = editTextNote.scrollY
+        val editTextVisibleHeight = editTextNote.height - editTextNote.totalPaddingTop - editTextNote.totalPaddingBottom
+        
+        val isOutOfSight = lineTop < currentScrollY || lineBottom > (currentScrollY + editTextVisibleHeight)
+        
+        if (isOutOfSight) {
+            val targetScrollY = (lineTop + lineBottom) / 2 - editTextVisibleHeight / 2
+            val maxScrollY = layout.height - editTextVisibleHeight
+            val safeScrollY = targetScrollY.coerceIn(0, maxScrollY.coerceAtLeast(0))
+            
+            editTextNote.scrollTo(0, safeScrollY)
         }
     }
 
@@ -434,6 +571,7 @@ class NoteEditActivity : AppCompatActivity() {
 
         editTextNote.postDelayed({
             for (id in ids) {
+                @Suppress("DEPRECATION")
                 appWidgetManager.notifyAppWidgetViewDataChanged(id, R.id.widget_list_view)
             }
         }, 500)
