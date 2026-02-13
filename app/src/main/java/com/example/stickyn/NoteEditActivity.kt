@@ -1,27 +1,40 @@
 package com.example.stickyn
 
+import android.app.Dialog
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.Html
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.TextWatcher
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.ImageSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
 import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
+import android.view.Window
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.edit
+import java.io.InputStream
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -37,6 +50,13 @@ class NoteEditActivity : AppCompatActivity() {
     private var isStrikethrough = false
     private var isBulletList = false
 
+    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let {
+            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            insertImageFromUri(it)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -49,6 +69,9 @@ class NoteEditActivity : AppCompatActivity() {
         editTitle = findViewById(R.id.edit_widget_title)
         editTextNote = findViewById(R.id.edit_text_note)
         buttonSave = findViewById(R.id.button_save)
+
+        // Enable clickable spans in EditText
+        editTextNote.movementMethod = LinkMovementMethod.getInstance()
 
         setupFormattingButtons()
         setupTextFormattingLogic()
@@ -106,8 +129,104 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
         btnImage.setOnClickListener {
-            Toast.makeText(this, "Image feature coming soon!", Toast.LENGTH_SHORT).show()
+            pickImageLauncher.launch(arrayOf("image/*"))
         }
+    }
+
+    private fun insertImageFromUri(uri: Uri) {
+        editTextNote.post {
+            try {
+                val inputStream: InputStream? = contentResolver.openInputStream(uri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+
+                if (bitmap != null) {
+                    val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
+                    val drawable = BitmapDrawable(resources, scaledBitmap)
+                    drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+
+                    val selectionStart = editTextNote.selectionStart
+                    val selectionEnd = editTextNote.selectionEnd
+                    
+                    val builder = SpannableStringBuilder(editTextNote.text)
+                    builder.replace(selectionStart, selectionEnd, " ")
+                    
+                    val imageSpan = ImageSpan(drawable, uri.toString())
+                    builder.setSpan(imageSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    
+                    val clickableSpan = object : ClickableSpan() {
+                        override fun onClick(widget: View) {
+                            showFullscreenImage(uri)
+                        }
+                    }
+                    builder.setSpan(clickableSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    
+                    editTextNote.setText(builder)
+                    editTextNote.setSelection(selectionStart + 1)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showFullscreenImage(uri: Uri) {
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setContentView(R.layout.dialog_fullscreen_image)
+
+        val imageView = dialog.findViewById<ImageView>(R.id.fullscreen_image)
+        val btnClose = dialog.findViewById<Button>(R.id.button_close)
+        val btnDelete = dialog.findViewById<Button>(R.id.button_delete_image)
+
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+            imageView.setImageBitmap(bitmap)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        btnClose.setOnClickListener { dialog.dismiss() }
+        
+        btnDelete.setOnClickListener {
+            deleteImageFromNote(uri.toString())
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    private fun deleteImageFromNote(uriString: String) {
+        val spannable = editTextNote.text
+        val imageSpans = spannable.getSpans(0, spannable.length, ImageSpan::class.java)
+        val clickableSpans = spannable.getSpans(0, spannable.length, ClickableSpan::class.java)
+
+        for (span in imageSpans) {
+            if (span.source == uriString) {
+                val start = spannable.getSpanStart(span)
+                val end = spannable.getSpanEnd(span)
+                if (start != -1 && end != -1) {
+                    // Remove clickable spans in this range too
+                    for (cSpan in clickableSpans) {
+                        if (spannable.getSpanStart(cSpan) == start) {
+                            spannable.removeSpan(cSpan)
+                        }
+                    }
+                    spannable.delete(start, end)
+                    break
+                }
+            }
+        }
+    }
+
+    private fun scaleBitmap(bitmap: Bitmap, maxWidth: Int): Bitmap {
+        if (maxWidth <= 0 || bitmap.width <= maxWidth) return bitmap
+        val aspectRatio = bitmap.height.toFloat() / bitmap.width.toFloat()
+        val height = (maxWidth * aspectRatio).toInt()
+        return Bitmap.createScaledBitmap(bitmap, maxWidth, height, true)
     }
 
     private fun applySpanToSelection(span: Any) {
@@ -150,9 +269,38 @@ class NoteEditActivity : AppCompatActivity() {
         })
 
         editTextNote.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_ENTER) {
-                if (isBulletList) {
-                    editTextNote.post { applyBulletAtCurrentLine() }
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val selectionStart = editTextNote.selectionStart
+                val selectionEnd = editTextNote.selectionEnd
+                
+                // Protect images from backspace/delete
+                if (keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_FORWARD_DEL) {
+                    val spannable = editTextNote.text
+                    val rangeStart = if (keyCode == KeyEvent.KEYCODE_DEL) selectionStart - 1 else selectionStart
+                    val rangeEnd = if (keyCode == KeyEvent.KEYCODE_DEL) selectionStart else selectionStart + 1
+                    
+                    if (rangeStart >= 0 && rangeEnd <= spannable.length) {
+                        val imageSpans = spannable.getSpans(rangeStart, rangeEnd, ImageSpan::class.java)
+                        if (imageSpans.isNotEmpty()) {
+                            Toast.makeText(this, "Tap image to delete from fullscreen", Toast.LENGTH_SHORT).show()
+                            return@setOnKeyListener true
+                        }
+                    }
+                    
+                    // Handle selection delete protection
+                    if (selectionStart != selectionEnd) {
+                        val imageSpans = spannable.getSpans(selectionStart, selectionEnd, ImageSpan::class.java)
+                        if (imageSpans.isNotEmpty()) {
+                            Toast.makeText(this, "Selection contains images. Delete them individually.", Toast.LENGTH_SHORT).show()
+                            return@setOnKeyListener true
+                        }
+                    }
+                }
+
+                if (keyCode == KeyEvent.KEYCODE_ENTER) {
+                    if (isBulletList) {
+                        editTextNote.post { applyBulletAtCurrentLine() }
+                    }
                 }
             }
             false
@@ -189,7 +337,9 @@ class NoteEditActivity : AppCompatActivity() {
         appWidgetId = incomingId
 
         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-            loadData()
+            editTextNote.post {
+                loadData()
+            }
         }
         
         editTextNote.requestFocus()
@@ -203,7 +353,42 @@ class NoteEditActivity : AppCompatActivity() {
         val savedNote = sharedPrefs.getString("saved_note_text_$appWidgetId", "")
         editTitle.setText(savedTitle)
         if (!savedNote.isNullOrEmpty()) {
-            editTextNote.setText(Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY))
+            val imageGetter = Html.ImageGetter { source ->
+                try {
+                    val uri = Uri.parse(source)
+                    val inputStream = contentResolver.openInputStream(uri)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    if (bitmap != null) {
+                        val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
+                        val drawable = BitmapDrawable(resources, scaledBitmap)
+                        drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+                        return@ImageGetter drawable
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                null
+            }
+
+            val spanned = Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+            val builder = SpannableStringBuilder(spanned)
+            
+            // Re-apply clickable spans to loaded images
+            val imageSpans = builder.getSpans(0, builder.length, ImageSpan::class.java)
+            for (span in imageSpans) {
+                val start = builder.getSpanStart(span)
+                val end = builder.getSpanEnd(span)
+                val uri = Uri.parse(span.source)
+                val clickableSpan = object : ClickableSpan() {
+                    override fun onClick(widget: View) {
+                        showFullscreenImage(uri)
+                    }
+                }
+                builder.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            
+            editTextNote.setText(builder)
         } else {
             editTextNote.setText("")
         }

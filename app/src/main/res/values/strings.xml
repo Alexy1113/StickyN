@@ -10,7 +10,6 @@
     <string name="choose_theme">Choose Theme:</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="theme_matrix">Matrix (Neon Green)</string>
     <string name="apply">Apply</string>
     <string name="new_note">New Note</string>
     <string name="edit_note">Edit Note</string>
@@ -22,4 +21,9 @@
     <string name="add_image">Add Image</string>
     <string name="home_title">StickyN Home</string>
     <string name="home_instruction">Add a widget to your home screen to start creating sticky notes!</string>
+    <string name="testing_version">Testing Version</string>
+    <string name="creator_aleksei_vassimov">Creator : Aleksei Vassimov</string>
+    <string name="back">Back</string>
+    <string name="auto_theme">The app theme automatically follows your system\'s light/dark mode settings.</string>
+    <string name="scroll_tutorial">You can scroll widget text with a finger.</string>
 </resources>

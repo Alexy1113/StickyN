@@ -3,10 +3,14 @@ package com.example.stickyn
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.text.Html
+import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import androidx.core.graphics.toColorInt
+import java.util.regex.Pattern
 
 class WidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
@@ -28,7 +32,6 @@ class WidgetItemFactory(
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
-        // Use applicationContext and explicit pref name for absolute consistency
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
     }
@@ -40,11 +43,31 @@ class WidgetItemFactory(
     override fun getViewAt(position: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_note_item)
         
-        val formattedText = if (noteText.isNotEmpty()) {
-            Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY)
+        // Extract first image URI from HTML if exists
+        val imgMatcher = Pattern.compile("<img src=\"([^\"]+)\"").matcher(noteText)
+        if (imgMatcher.find()) {
+            val imgSource = imgMatcher.group(1)
+            try {
+                val uri = Uri.parse(imgSource)
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                if (bitmap != null) {
+                    views.setImageViewBitmap(R.id.item_image, bitmap)
+                    views.setViewVisibility(R.id.item_image, View.VISIBLE)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                views.setViewVisibility(R.id.item_image, View.GONE)
+            }
         } else {
-            ""
+            views.setViewVisibility(R.id.item_image, View.GONE)
         }
+
+        // Strip img tags for TextView to avoid OBJ placeholder
+        val textWithoutImages = noteText.replace("<img[^>]*>".toRegex(), "")
+        val formattedText = Html.fromHtml(textWithoutImages, Html.FROM_HTML_MODE_LEGACY)
+
         views.setTextViewText(R.id.item_text, formattedText)
         
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
