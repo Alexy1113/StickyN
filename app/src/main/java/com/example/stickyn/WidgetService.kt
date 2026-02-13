@@ -38,7 +38,7 @@ class WidgetItemFactory(
 
     override fun onDestroy() {}
 
-    override fun getCount(): Int = if (noteText.isEmpty()) 0 else 1
+    override fun getCount(): Int = if (noteText.isNullOrEmpty()) 0 else 1
 
     override fun getViewAt(position: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_note_item)
@@ -47,17 +47,23 @@ class WidgetItemFactory(
         val imgMatcher = Pattern.compile("<img src=\"([^\"]+)\"").matcher(noteText)
         if (imgMatcher.find()) {
             val imgSource = imgMatcher.group(1)
-            try {
-                val uri = imgSource.toUri()
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-                if (bitmap != null) {
-                    views.setImageViewBitmap(R.id.item_image, bitmap)
-                    views.setViewVisibility(R.id.item_image, View.VISIBLE)
+            if (!imgSource.isNullOrEmpty()) {
+                try {
+                    val uri = imgSource.toUri()
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    if (bitmap != null) {
+                        views.setImageViewBitmap(R.id.item_image, bitmap)
+                        views.setViewVisibility(R.id.item_image, View.VISIBLE)
+                    } else {
+                        views.setViewVisibility(R.id.item_image, View.GONE)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    views.setViewVisibility(R.id.item_image, View.GONE)
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } else {
                 views.setViewVisibility(R.id.item_image, View.GONE)
             }
         } else {
@@ -65,10 +71,15 @@ class WidgetItemFactory(
         }
 
         // Strip img tags for TextView to avoid OBJ placeholder
-        val textWithoutImages = noteText.replace("<img[^>]*>".toRegex(), "")
-        val formattedText = Html.fromHtml(textWithoutImages, Html.FROM_HTML_MODE_LEGACY)
-
-        views.setTextViewText(R.id.item_text, formattedText)
+        val textWithoutImages = noteText.replace("<img[^>]*>".toRegex(), "").trim()
+        
+        if (textWithoutImages.isNotEmpty()) {
+            val formattedText = Html.fromHtml(textWithoutImages, Html.FROM_HTML_MODE_LEGACY)
+            views.setTextViewText(R.id.item_text, formattedText)
+            views.setViewVisibility(R.id.item_text, View.VISIBLE)
+        } else {
+            views.setViewVisibility(R.id.item_text, View.GONE)
+        }
         
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         val themeMode = sharedPrefs.getString("widget_theme_mode", "light")

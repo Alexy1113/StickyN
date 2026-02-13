@@ -56,7 +56,11 @@ class NoteEditActivity : AppCompatActivity() {
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let {
-            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try {
+                contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             insertImageFromUri(it)
         }
     }
@@ -74,7 +78,6 @@ class NoteEditActivity : AppCompatActivity() {
         editTextNote = findViewById(R.id.edit_text_note)
         buttonSave = findViewById(R.id.button_save)
 
-        // Enable clickable spans in EditText
         editTextNote.movementMethod = LinkMovementMethod.getInstance()
 
         setupFormattingButtons()
@@ -138,40 +141,52 @@ class NoteEditActivity : AppCompatActivity() {
     }
 
     private fun insertImageFromUri(uri: Uri) {
-        editTextNote.post {
-            try {
-                val inputStream: InputStream? = contentResolver.openInputStream(uri)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-
-                if (bitmap != null) {
-                    val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
-                    val drawable = scaledBitmap.toDrawable(resources)
-                    drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
-
-                    val selectionStart = editTextNote.selectionStart
-                    val selectionEnd = editTextNote.selectionEnd
-                    
-                    val builder = SpannableStringBuilder(editTextNote.text)
-                    builder.replace(selectionStart, selectionEnd, " ")
-                    
-                    val imageSpan = ImageSpan(drawable, uri.toString())
-                    builder.setSpan(imageSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    
-                    val clickableSpan = object : ClickableSpan() {
-                        override fun onClick(widget: View) {
-                            showFullscreenImage(uri)
-                        }
-                    }
-                    builder.setSpan(clickableSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    
-                    editTextNote.setText(builder)
-                    editTextNote.setSelection(selectionStart + 1)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+        try {
+            val inputStream: InputStream? = contentResolver.openInputStream(uri)
+            if (inputStream == null) {
+                Toast.makeText(this, "Could not open image file", Toast.LENGTH_SHORT).show()
+                return
             }
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+
+            if (bitmap != null) {
+                val targetWidth = if (editTextNote.width > 0) {
+                    editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight
+                } else {
+                    (resources.displayMetrics.widthPixels * 0.8).toInt()
+                }
+
+                val scaledBitmap = scaleBitmap(bitmap, targetWidth)
+                val drawable = scaledBitmap.toDrawable(resources)
+                drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+
+                var selectionStart = editTextNote.selectionStart
+                var selectionEnd = editTextNote.selectionEnd
+                if (selectionStart < 0) selectionStart = 0
+                if (selectionEnd < 0) selectionEnd = 0
+                
+                val builder = SpannableStringBuilder(editTextNote.text)
+                builder.replace(selectionStart, selectionEnd, " ")
+                
+                val imageSpan = ImageSpan(drawable, uri.toString())
+                builder.setSpan(imageSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                
+                val clickableSpan = object : ClickableSpan() {
+                    override fun onClick(widget: View) {
+                        showFullscreenImage(uri)
+                    }
+                }
+                builder.setSpan(clickableSpan, selectionStart, selectionStart + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                
+                editTextNote.setText(builder)
+                editTextNote.setSelection(selectionStart + 1)
+            } else {
+                Toast.makeText(this, "Failed to decode image data", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -213,7 +228,6 @@ class NoteEditActivity : AppCompatActivity() {
                 val start = spannable.getSpanStart(span)
                 val end = spannable.getSpanEnd(span)
                 if (start != -1 && end != -1) {
-                    // Remove clickable spans in this range too
                     for (cSpan in clickableSpans) {
                         if (spannable.getSpanStart(cSpan) == start) {
                             spannable.removeSpan(cSpan)
@@ -277,7 +291,6 @@ class NoteEditActivity : AppCompatActivity() {
                 val selectionStart = editTextNote.selectionStart
                 val selectionEnd = editTextNote.selectionEnd
                 
-                // Protect images from backspace/delete
                 if (keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_FORWARD_DEL) {
                     val spannable = editTextNote.text
                     val rangeStart = if (keyCode == KeyEvent.KEYCODE_DEL) selectionStart - 1 else selectionStart
@@ -291,7 +304,6 @@ class NoteEditActivity : AppCompatActivity() {
                         }
                     }
                     
-                    // Handle selection delete protection
                     if (selectionStart != selectionEnd) {
                         val imageSpans = spannable.getSpans(selectionStart, selectionEnd, ImageSpan::class.java)
                         if (imageSpans.isNotEmpty()) {
@@ -378,12 +390,12 @@ class NoteEditActivity : AppCompatActivity() {
             val spanned = Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
             val builder = SpannableStringBuilder(spanned)
             
-            // Re-apply clickable spans to loaded images
             val imageSpans = builder.getSpans(0, builder.length, ImageSpan::class.java)
             for (span in imageSpans) {
                 val start = builder.getSpanStart(span)
                 val end = builder.getSpanEnd(span)
-                val uri = span.source?.toUri() ?: continue
+                val uriStr = span.source ?: continue
+                val uri = uriStr.toUri()
                 val clickableSpan = object : ClickableSpan() {
                     override fun onClick(widget: View) {
                         showFullscreenImage(uri)
@@ -404,12 +416,10 @@ class NoteEditActivity : AppCompatActivity() {
         val ids = appWidgetManager.getAppWidgetIds(componentName)
         
         if (Build.VERSION.SDK_INT >= 35) {
-            // Android 15+: recommended way to signal collection data changes
             for (id in ids) {
                 updateAppWidget(this, appWidgetManager, id)
             }
         } else {
-            // Older versions: use the stable deprecated method
             @Suppress("DEPRECATION")
             for (id in ids) {
                 appWidgetManager.notifyAppWidgetViewDataChanged(id, R.id.widget_list_view)
