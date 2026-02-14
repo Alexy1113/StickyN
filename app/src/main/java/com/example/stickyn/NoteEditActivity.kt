@@ -1,5 +1,6 @@
 package com.example.stickyn
 
+import android.annotation.SuppressLint
 import android.app.Dialog
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
@@ -10,7 +11,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.Html
@@ -38,7 +38,6 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.edit
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
@@ -98,11 +97,9 @@ class NoteEditActivity : AppCompatActivity() {
 
         // Use ArrowKeyMovementMethod but override touch for custom scroll behavior
         editTextNote.movementMethod = ArrowKeyMovementMethod.getInstance()
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            editTextNote.setOnDragListener(null)
-        }
-        
+
+        editTextNote.setOnDragListener(null)
+
         editTextNote.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
