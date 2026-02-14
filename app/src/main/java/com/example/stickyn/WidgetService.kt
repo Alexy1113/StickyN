@@ -5,12 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.text.Html
+import android.text.Spanned
+import android.text.style.ImageSpan
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
-import java.util.regex.Pattern
 
 class WidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
@@ -33,14 +34,14 @@ class WidgetItemFactory(
 
     override fun onDataSetChanged() {
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
-        // Redundant Elvis operator removed as getString with non-null default value returns non-null.
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
     }
 
     override fun onDestroy() {}
 
     override fun getCount(): Int {
-        val plainText = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+        val spanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY)
+        val plainText = spanned.toString().trim()
         val hasImage = noteText.contains("<img", ignoreCase = true)
         return if (plainText.isNotEmpty() || hasImage) 1 else 0
     }
@@ -56,17 +57,23 @@ class WidgetItemFactory(
             else -> "#000000".toColorInt()
         }
 
-        val imgPattern = Pattern.compile("<img[^>]+src\\s*=\\s*['\"]([^'\">]+)['\"][^>]*>", Pattern.CASE_INSENSITIVE)
-        val matcher = imgPattern.matcher(noteText)
+        // Parse the entire HTML to preserve all formatting spans (bold, italic, size, etc.)
+        val fullSpanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY)
+        
+        // Find ImageSpans in the parsed content
+        val imageSpans = fullSpanned.getSpans(0, fullSpanned.length, ImageSpan::class.java)
 
-        if (matcher.find()) {
-            val imgSource = matcher.group(1)
-            val beforeHtml = noteText.substring(0, matcher.start())
-            val afterHtml = noteText.substring(matcher.end())
+        if (imageSpans.isNotEmpty()) {
+            // Logic to split Spanned content around the first image found
+            val firstImageSpan = imageSpans[0]
+            val start = fullSpanned.getSpanStart(firstImageSpan)
+            val end = fullSpanned.getSpanEnd(firstImageSpan)
+
+            val topText = fullSpanned.subSequence(0, start)
+            val bottomText = fullSpanned.subSequence(end, fullSpanned.length)
 
             // Handle Top Text
-            val topSpanned = Html.fromHtml(beforeHtml, Html.FROM_HTML_MODE_LEGACY)
-            val trimmedTop = trimSpanned(topSpanned)
+            val trimmedTop = trimSpanned(topText)
             if (trimmedTop.isNotEmpty()) {
                 views.setTextViewText(R.id.item_text_top, trimmedTop)
                 views.setTextColor(R.id.item_text_top, textColor)
@@ -76,6 +83,7 @@ class WidgetItemFactory(
             }
 
             // Handle Image
+            val imgSource = firstImageSpan.source
             var hasImage = false
             if (!imgSource.isNullOrEmpty()) {
                 try {
@@ -95,8 +103,7 @@ class WidgetItemFactory(
             if (!hasImage) views.setViewVisibility(R.id.item_image, View.GONE)
 
             // Handle Bottom Text
-            val bottomSpanned = Html.fromHtml(afterHtml, Html.FROM_HTML_MODE_LEGACY)
-            val trimmedBottom = trimSpanned(bottomSpanned)
+            val trimmedBottom = trimSpanned(bottomText)
             if (trimmedBottom.isNotEmpty()) {
                 views.setTextViewText(R.id.item_text_bottom, trimmedBottom)
                 views.setTextColor(R.id.item_text_bottom, textColor)
@@ -106,8 +113,8 @@ class WidgetItemFactory(
             }
 
         } else {
-            val allSpanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY)
-            val trimmedAll = trimSpanned(allSpanned)
+            // No images, just show everything in the top text view
+            val trimmedAll = trimSpanned(fullSpanned)
             views.setTextViewText(R.id.item_text_top, trimmedAll)
             views.setTextColor(R.id.item_text_top, textColor)
             views.setViewVisibility(R.id.item_text_top, if (trimmedAll.isNotEmpty()) View.VISIBLE else View.GONE)

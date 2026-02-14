@@ -11,14 +11,17 @@ import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.Html
 import android.text.Spannable
+import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.method.ArrowKeyMovementMethod
+import android.text.style.AbsoluteSizeSpan
 import android.text.style.ClickableSpan
 import android.text.style.ImageSpan
 import android.text.style.StrikethroughSpan
@@ -35,6 +38,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -50,6 +54,7 @@ class NoteEditActivity : AppCompatActivity() {
     private lateinit var editTitle: EditText
     private lateinit var editTextNote: EditText
     private lateinit var buttonSave: Button
+    private lateinit var btnTextSize: Button
     private lateinit var sharedPrefs: SharedPreferences
     private var appWidgetId: Int = AppWidgetManager.INVALID_APPWIDGET_ID
 
@@ -58,6 +63,7 @@ class NoteEditActivity : AppCompatActivity() {
     private var isUnderline = false
     private var isStrikethrough = false
     private var isBulletList = false
+    private var currentTextSize = 18
 
     private var lastTouchX = 0f
     private var lastTouchY = 0f
@@ -89,6 +95,7 @@ class NoteEditActivity : AppCompatActivity() {
         editTitle = findViewById(R.id.edit_widget_title)
         editTextNote = findViewById(R.id.edit_text_note)
         buttonSave = findViewById(R.id.button_save)
+        btnTextSize = findViewById(R.id.button_text_size)
 
         // Make title underlined in the editor too
         editTitle.paintFlags = editTitle.paintFlags or Paint.UNDERLINE_TEXT_FLAG
@@ -98,8 +105,11 @@ class NoteEditActivity : AppCompatActivity() {
         // Use ArrowKeyMovementMethod but override touch for custom scroll behavior
         editTextNote.movementMethod = ArrowKeyMovementMethod.getInstance()
 
-        editTextNote.setOnDragListener(null)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            editTextNote.setOnDragListener(null)
+        }
 
+        @SuppressLint("ClickableViewAccessibility")
         editTextNote.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -108,16 +118,21 @@ class NoteEditActivity : AppCompatActivity() {
                     isScrolling = false
                     initialSelectionStart = editTextNote.selectionStart
                     initialSelectionEnd = editTextNote.selectionEnd
+                    // Return false to allow default EditText touch handling (long click, handles)
+                    return@setOnTouchListener false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - lastTouchX
                     val dy = event.y - lastTouchY
+                    
                     if (!isScrolling && sqrt(dx.pow(2) + dy.pow(2)) > touchSlop) {
-                        isScrolling = true
+                        // Only start custom scroll if we're not currently selecting text
+                        if (editTextNote.selectionStart == editTextNote.selectionEnd) {
+                            isScrolling = true
+                        }
                     }
                     
                     if (isScrolling) {
-                        // Manually scroll the view
                         val scrollY = v.scrollY
                         val targetY = (scrollY - dy).toInt()
                         val visibleHeight = v.height - v.paddingTop - v.paddingBottom
@@ -127,12 +142,12 @@ class NoteEditActivity : AppCompatActivity() {
                         lastTouchX = event.x
                         lastTouchY = event.y
                         
-                        // Keep cursor where it was before the gesture started
                         if (initialSelectionStart >= 0) {
                             editTextNote.setSelection(initialSelectionStart, initialSelectionEnd)
                         }
                         return@setOnTouchListener true
                     }
+                    return@setOnTouchListener false
                 }
                 MotionEvent.ACTION_UP -> {
                     if (isScrolling) {
@@ -140,31 +155,18 @@ class NoteEditActivity : AppCompatActivity() {
                         v.performClick()
                         return@setOnTouchListener true
                     } else {
-                        // Manual tap handling: move cursor without jumping/snapping
                         val offset = getOffsetForPosition(event.x, event.y)
-                        val curX = editTextNote.scrollX
-                        val curY = editTextNote.scrollY
-                        
-                        editTextNote.requestFocus()
-                        editTextNote.setSelection(offset)
-                        
-                        // Use post to override the default "bring into view" behavior of setSelection
-                        editTextNote.post {
-                            editTextNote.scrollTo(curX, curY)
-                        }
-                        
-                        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-                        imm.showSoftInput(editTextNote, InputMethodManager.SHOW_IMPLICIT)
-
                         val text = editTextNote.text
                         if (text is Spanned) {
                             val spans = text.getSpans(offset, offset, ClickableSpan::class.java)
                             if (spans.isNotEmpty()) {
                                 spans[0].onClick(editTextNote)
+                                v.performClick()
+                                return@setOnTouchListener true
                             }
                         }
-                        v.performClick()
-                        return@setOnTouchListener true
+                        // Return false to let EditText handle normal taps (cursor placement, etc.)
+                        return@setOnTouchListener false
                     }
                 }
             }
@@ -254,6 +256,33 @@ class NoteEditActivity : AppCompatActivity() {
         btnImage.setOnClickListener {
             pickImageLauncher.launch(arrayOf("image/*"))
         }
+        btnTextSize.setOnClickListener {
+            showTextSizeMenu(it)
+        }
+    }
+
+    private fun showTextSizeMenu(view: View) {
+        val popup = PopupMenu(this, view)
+        val sizes = listOf(14, 18, 22, 26) // 1 down, default (18), 2 up
+        for (size in sizes) {
+            val title = SpannableString("$size")
+            // Apply text size to the menu item itself
+            title.setSpan(AbsoluteSizeSpan(size, true), 0, title.length, 0)
+            if (size == 18) {
+                // Default size is bold
+                title.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, 0)
+            }
+            val item = popup.menu.add(title)
+            item.setOnMenuItemClickListener {
+                currentTextSize = size
+                if (editTextNote.hasSelection()) {
+                    applySpanToSelection(AbsoluteSizeSpan(size, true))
+                }
+                btnTextSize.text = "Text size $size"
+                true
+            }
+        }
+        popup.show()
     }
 
     private fun insertImageFromUri(uri: Uri) {
@@ -367,6 +396,7 @@ class NoteEditActivity : AppCompatActivity() {
     private fun applySpanToSelection(span: Any) {
         val start = editTextNote.selectionStart
         val end = editTextNote.selectionEnd
+        if (start < 0 || end < 0 || start == end) return
         val spannable = editTextNote.text
         val existingSpans = spannable.getSpans(start, end, span.javaClass)
         for (existingSpan in existingSpans) spannable.removeSpan(existingSpan)
@@ -398,6 +428,9 @@ class NoteEditActivity : AppCompatActivity() {
                     if (isItalic) spannable.setSpan(StyleSpan(Typeface.ITALIC), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     if (isUnderline) spannable.setSpan(UnderlineSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     if (isStrikethrough) spannable.setSpan(StrikethroughSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    if (currentTextSize != 18) {
+                        spannable.setSpan(AbsoluteSizeSpan(currentTextSize, true), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
                 }
                 if (count != before) {
                     editTextNote.post { scrollToCursorIfNeeded() }
