@@ -3,15 +3,20 @@ package com.example.stickyn
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.text.Html
-import android.text.Spanned
-import android.text.style.ImageSpan
+import android.text.SpannableStringBuilder
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
+import androidx.core.graphics.scale
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import android.text.style.ImageSpan
 
 class WidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
@@ -30,24 +35,89 @@ class WidgetItemFactory(
         AppWidgetManager.INVALID_APPWIDGET_ID
     )
 
+    private sealed class NoteSegment {
+        data class Text(val content: CharSequence) : NoteSegment()
+        data class Image(val uriString: String) : NoteSegment()
+    }
+
+    private var segments = mutableListOf<NoteSegment>()
+
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
+        parseSegments()
+    }
+
+    private fun parseSegments() {
+        segments.clear()
+        if (noteText.isEmpty()) return
+
+        // We must provide a dummy ImageGetter, otherwise Html.fromHtml 
+        // won't create ImageSpan objects for <img> tags.
+        val imageGetter = Html.ImageGetter { ColorDrawable(Color.TRANSPARENT) }
+        val fullSpanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+        val imageSpans = fullSpanned.getSpans(0, fullSpanned.length, ImageSpan::class.java)
+        
+        val sortedSpans = imageSpans.sortedBy { fullSpanned.getSpanStart(it) }
+
+        var lastEnd = 0
+        for (span in sortedSpans) {
+            val start = fullSpanned.getSpanStart(span)
+            val end = fullSpanned.getSpanEnd(span)
+
+            // Add text segment before the image
+            if (start > lastEnd) {
+                val textPart = fullSpanned.subSequence(lastEnd, start)
+                val cleaned = cleanText(textPart)
+                if (cleaned.isNotEmpty()) {
+                    segments.add(NoteSegment.Text(cleaned))
+                }
+            }
+
+            // Add the image segment
+            span.source?.let {
+                segments.add(NoteSegment.Image(it))
+            }
+
+            lastEnd = end
+        }
+
+        // Add remaining text segment after the last image
+        if (lastEnd < fullSpanned.length) {
+            val remainingText = fullSpanned.subSequence(lastEnd, fullSpanned.length)
+            val cleaned = cleanText(remainingText)
+            if (cleaned.isNotEmpty()) {
+                segments.add(NoteSegment.Text(cleaned))
+            }
+        }
+    }
+
+    private fun cleanText(s: CharSequence): CharSequence {
+        // Remove U+FFFC (Object Replacement Character) which is used as a placeholder for images
+        // RemoteViews doesn't support ImageSpan, so these characters appear as "OBJ" blocks.
+        val sb = SpannableStringBuilder(s)
+        var i = 0
+        while (i < sb.length) {
+            if (sb[i] == '\uFFFC') {
+                sb.delete(i, i + 1)
+            } else {
+                i++
+            }
+        }
+        return trimSpanned(sb)
     }
 
     override fun onDestroy() {}
 
-    override fun getCount(): Int {
-        val spanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY)
-        val plainText = spanned.toString().trim()
-        val hasImage = noteText.contains("<img", ignoreCase = true)
-        return if (plainText.isNotEmpty() || hasImage) 1 else 0
-    }
+    override fun getCount(): Int = segments.size
 
     override fun getViewAt(position: Int): RemoteViews {
+        if (position >= segments.size) return RemoteViews(context.packageName, R.layout.widget_note_item)
+
         val views = RemoteViews(context.packageName, R.layout.widget_note_item)
+        val segment = segments[position]
         
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         val themeMode = sharedPrefs.getString("widget_theme_mode", "light")
@@ -57,78 +127,83 @@ class WidgetItemFactory(
             else -> "#000000".toColorInt()
         }
 
-        // Parse the entire HTML to preserve all formatting spans (bold, italic, size, etc.)
-        val fullSpanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY)
-        
-        // Find ImageSpans in the parsed content
-        val imageSpans = fullSpanned.getSpans(0, fullSpanned.length, ImageSpan::class.java)
+        // Reset visibility
+        views.setViewVisibility(R.id.item_text_top, View.GONE)
+        views.setViewVisibility(R.id.item_image, View.GONE)
+        views.setViewVisibility(R.id.item_text_bottom, View.GONE)
 
-        if (imageSpans.isNotEmpty()) {
-            // Logic to split Spanned content around the first image found
-            val firstImageSpan = imageSpans[0]
-            val start = fullSpanned.getSpanStart(firstImageSpan)
-            val end = fullSpanned.getSpanEnd(firstImageSpan)
-
-            val topText = fullSpanned.subSequence(0, start)
-            val bottomText = fullSpanned.subSequence(end, fullSpanned.length)
-
-            // Handle Top Text
-            val trimmedTop = trimSpanned(topText)
-            if (trimmedTop.isNotEmpty()) {
-                views.setTextViewText(R.id.item_text_top, trimmedTop)
+        when (segment) {
+            is NoteSegment.Text -> {
+                views.setTextViewText(R.id.item_text_top, segment.content)
                 views.setTextColor(R.id.item_text_top, textColor)
                 views.setViewVisibility(R.id.item_text_top, View.VISIBLE)
-            } else {
-                views.setViewVisibility(R.id.item_text_top, View.GONE)
             }
-
-            // Handle Image
-            val imgSource = firstImageSpan.source
-            var hasImage = false
-            if (!imgSource.isNullOrEmpty()) {
+            is NoteSegment.Image -> {
                 try {
-                    val uri = imgSource.toUri()
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    inputStream?.close()
+                    val uri = segment.uriString.toUri()
+                    val maxWidth = 600
+                    val maxHeight = 800
+                    
+                    val bitmap = decodeSampledBitmapFromUri(uri, maxWidth, maxHeight)
                     if (bitmap != null) {
-                        views.setImageViewBitmap(R.id.item_image, bitmap)
+                        val finalBitmap = scaleBitmap(bitmap, maxWidth)
+                        views.setImageViewBitmap(R.id.item_image, finalBitmap)
                         views.setViewVisibility(R.id.item_image, View.VISIBLE)
-                        hasImage = true
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
-            if (!hasImage) views.setViewVisibility(R.id.item_image, View.GONE)
-
-            // Handle Bottom Text
-            val trimmedBottom = trimSpanned(bottomText)
-            if (trimmedBottom.isNotEmpty()) {
-                views.setTextViewText(R.id.item_text_bottom, trimmedBottom)
-                views.setTextColor(R.id.item_text_bottom, textColor)
-                views.setViewVisibility(R.id.item_text_bottom, View.VISIBLE)
-            } else {
-                views.setViewVisibility(R.id.item_text_bottom, View.GONE)
-            }
-
-        } else {
-            // No images, just show everything in the top text view
-            val trimmedAll = trimSpanned(fullSpanned)
-            views.setTextViewText(R.id.item_text_top, trimmedAll)
-            views.setTextColor(R.id.item_text_top, textColor)
-            views.setViewVisibility(R.id.item_text_top, if (trimmedAll.isNotEmpty()) View.VISIBLE else View.GONE)
-            views.setViewVisibility(R.id.item_image, View.GONE)
-            views.setViewVisibility(R.id.item_text_bottom, View.GONE)
         }
 
         val fillInIntent = Intent().apply {
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         }
         views.setOnClickFillInIntent(R.id.item_text_top, fillInIntent)
-        views.setOnClickFillInIntent(R.id.item_text_bottom, fillInIntent)
+        views.setOnClickFillInIntent(R.id.item_image, fillInIntent)
 
         return views
+    }
+
+    private fun decodeSampledBitmapFromUri(uri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
+        return try {
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream, null, options)
+            }
+
+            options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
+            options.inJustDecodeBounds = false
+
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream, null, options)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height: Int, width: Int) = options.outHeight to options.outWidth
+        var inSampleSize = 1
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+
+    private fun scaleBitmap(bitmap: Bitmap, maxWidth: Int): Bitmap {
+        if (maxWidth <= 0 || bitmap.width <= maxWidth) return bitmap
+        val aspectRatio = bitmap.height.toFloat() / bitmap.width.toFloat()
+        val height = (maxWidth * aspectRatio).toInt()
+        return bitmap.scale(maxWidth, height, true)
     }
 
     private fun trimSpanned(s: CharSequence): CharSequence {
@@ -140,7 +215,7 @@ class WidgetItemFactory(
         while (end > start && Character.isWhitespace(s[end - 1])) {
             end--
         }
-        return s.subSequence(start, end)
+        return if (start < end) s.subSequence(start, end) else ""
     }
 
     override fun getLoadingView(): RemoteViews? = null

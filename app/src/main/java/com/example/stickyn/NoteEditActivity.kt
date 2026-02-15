@@ -8,8 +8,11 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -34,6 +37,7 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.Window
 import android.view.inputmethod.InputMethodManager
+import android.webkit.MimeTypeMap
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -42,9 +46,12 @@ import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -74,17 +81,21 @@ class NoteEditActivity : AppCompatActivity() {
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let {
-            try {
-                contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (e: Exception) {
-                e.printStackTrace()
+            val localUri = copyUriToInternalStorage(it)
+            if (localUri != null) {
+                insertImageFromUri(localUri)
+            } else {
+                Toast.makeText(this, "Error copying image to internal storage", Toast.LENGTH_SHORT).show()
             }
-            insertImageFromUri(it)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Remove window background to allow custom rounded corners in activity_main.xml
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        
         setContentView(R.layout.activity_main)
 
         sharedPrefs = applicationContext.getSharedPreferences("NoteWidgetPrefs", MODE_PRIVATE)
@@ -287,21 +298,16 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun insertImageFromUri(uri: Uri) {
         try {
-            val inputStream: InputStream? = contentResolver.openInputStream(uri)
-            if (inputStream == null) {
-                Toast.makeText(this, "Could not open image", Toast.LENGTH_SHORT).show()
-                return
+            val targetWidth = if (editTextNote.width > 0) {
+                editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight
+            } else {
+                (resources.displayMetrics.widthPixels * 0.8).toInt()
             }
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
+
+            // Safe decoding using inSampleSize
+            val bitmap = decodeSampledBitmapFromUri(uri, targetWidth, resources.displayMetrics.heightPixels)
 
             if (bitmap != null) {
-                val targetWidth = if (editTextNote.width > 0) {
-                    editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight
-                } else {
-                    (resources.displayMetrics.widthPixels * 0.8).toInt()
-                }
-
                 val scaledBitmap = scaleBitmap(bitmap, targetWidth)
                 val drawable = scaledBitmap.toDrawable(resources)
                 drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
@@ -311,11 +317,11 @@ class NoteEditActivity : AppCompatActivity() {
                 
                 val builder = SpannableStringBuilder(editTextNote.text)
                 
-                // Add fewer empty lines (2 before, 3 after) as requested
-                val insertionText = "\n\n \n\n\n"
+                // Add more natural spacing (1 newline before, 1 after)
+                val insertionText = "\n \n"
                 builder.replace(selectionStart, selectionEnd, insertionText)
                 
-                val imageIndex = selectionStart + 2
+                val imageIndex = selectionStart + 1
                 
                 val imageSpan = ImageSpan(drawable, uri.toString())
                 builder.setSpan(imageSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -329,10 +335,30 @@ class NoteEditActivity : AppCompatActivity() {
                 
                 editTextNote.setText(builder)
                 editTextNote.setSelection(selectionStart + insertionText.length)
+            } else {
+                Toast.makeText(this, "Could not load image", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Error loading image", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun copyUriToInternalStorage(uri: Uri): Uri? {
+        return try {
+            val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(contentResolver.getType(uri)) ?: "png"
+            val fileName = "note_image_${System.currentTimeMillis()}.$extension"
+            val file = File(filesDir, fileName)
+            
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            Uri.fromFile(file)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
@@ -346,9 +372,7 @@ class NoteEditActivity : AppCompatActivity() {
         val btnDelete = dialog.findViewById<Button>(R.id.button_delete_image)
 
         try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
+            val bitmap = decodeSampledBitmapFromUri(uri, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
             imageView.setImageBitmap(bitmap)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -380,6 +404,18 @@ class NoteEditActivity : AppCompatActivity() {
                         }
                     }
                     spannable.delete(start, end)
+                    
+                    // Also try to delete the file if it's in internal storage
+                    if (uriString.startsWith("file://")) {
+                        try {
+                            val path = Uri.parse(uriString).path
+                            if (path != null) {
+                                File(path).delete()
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
                     break
                 }
             }
@@ -391,6 +427,42 @@ class NoteEditActivity : AppCompatActivity() {
         val aspectRatio = bitmap.height.toFloat() / bitmap.width.toFloat()
         val height = (maxWidth * aspectRatio).toInt()
         return bitmap.scale(maxWidth, height, true)
+    }
+
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height: Int, width: Int) = options.outHeight to options.outWidth
+        var inSampleSize = 1
+
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+
+    private fun decodeSampledBitmapFromUri(uri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
+        return try {
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream, null, options)
+            }
+
+            options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
+            options.inJustDecodeBounds = false
+
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream, null, options)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     private fun applySpanToSelection(span: Any) {
@@ -555,19 +627,32 @@ class NoteEditActivity : AppCompatActivity() {
                 val imageGetter = Html.ImageGetter { source ->
                     try {
                         val uri = source.toUri()
-                        val inputStream = contentResolver.openInputStream(uri)
-                        val bitmap = BitmapFactory.decodeStream(inputStream)
-                        inputStream?.close()
+                        val targetWidth = if (editTextNote.width > 0) {
+                            editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight
+                        } else {
+                            (resources.displayMetrics.widthPixels * 0.8).toInt()
+                        }
+                        
+                        val bitmap = decodeSampledBitmapFromUri(uri, targetWidth, resources.displayMetrics.heightPixels)
                         if (bitmap != null) {
-                            val scaledBitmap = scaleBitmap(bitmap, editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight)
+                            val scaledBitmap = scaleBitmap(bitmap, targetWidth)
                             val drawable = scaledBitmap.toDrawable(resources)
                             drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
                             return@ImageGetter drawable
+                        } else {
+                            // Bitmap is null, return placeholder
+                            return@ImageGetter getPlaceholderDrawable(targetWidth)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        // Exception occurred, return placeholder
+                        val targetWidth = if (editTextNote.width > 0) {
+                            editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight
+                        } else {
+                            (resources.displayMetrics.widthPixels * 0.8).toInt()
+                        }
+                        return@ImageGetter getPlaceholderDrawable(targetWidth)
                     }
-                    null
                 }
 
                 val spanned = Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
@@ -590,6 +675,14 @@ class NoteEditActivity : AppCompatActivity() {
                 editTextNote.setText(builder)
             }
         }
+    }
+
+    private fun getPlaceholderDrawable(width: Int): Drawable {
+        // Simple placeholder: a gray rectangle with a border or icon (using a resource if available, or just a ColorDrawable)
+        val height = (width * 0.5).toInt() // Placeholder aspect ratio 2:1
+        val drawable = ContextCompat.getDrawable(this, android.R.drawable.ic_menu_report_image) ?: ColorDrawable(Color.LTGRAY)
+        drawable.setBounds(0, 0, width, height)
+        return drawable
     }
 
     private fun updateWidget() {
