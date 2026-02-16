@@ -54,8 +54,6 @@ class WidgetItemFactory(
         segments.clear()
         if (noteText.isEmpty()) return
 
-        // We must provide a dummy ImageGetter, otherwise Html.fromHtml 
-        // won't create ImageSpan objects for <img> tags.
         val imageGetter = Html.ImageGetter { ColorDrawable(Color.TRANSPARENT) }
         val fullSpanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
         val imageSpans = fullSpanned.getSpans(0, fullSpanned.length, ImageSpan::class.java)
@@ -67,7 +65,6 @@ class WidgetItemFactory(
             val start = fullSpanned.getSpanStart(span)
             val end = fullSpanned.getSpanEnd(span)
 
-            // Add text segment before the image
             if (start > lastEnd) {
                 val textPart = fullSpanned.subSequence(lastEnd, start)
                 val cleaned = cleanText(textPart)
@@ -76,7 +73,6 @@ class WidgetItemFactory(
                 }
             }
 
-            // Add the image segment
             span.source?.let {
                 segments.add(NoteSegment.Image(it))
             }
@@ -84,7 +80,6 @@ class WidgetItemFactory(
             lastEnd = end
         }
 
-        // Add remaining text segment after the last image
         if (lastEnd < fullSpanned.length) {
             val remainingText = fullSpanned.subSequence(lastEnd, fullSpanned.length)
             val cleaned = cleanText(remainingText)
@@ -95,8 +90,6 @@ class WidgetItemFactory(
     }
 
     private fun cleanText(s: CharSequence): CharSequence {
-        // Remove U+FFFC (Object Replacement Character) which is used as a placeholder for images
-        // RemoteViews doesn't support ImageSpan, so these characters appear as "OBJ" blocks.
         val sb = SpannableStringBuilder(s)
         var i = 0
         while (i < sb.length) {
@@ -118,16 +111,7 @@ class WidgetItemFactory(
 
         val views = RemoteViews(context.packageName, R.layout.widget_note_item)
         val segment = segments[position]
-        
-        val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
-        val themeMode = sharedPrefs.getString("widget_theme_mode", "light")
-        val textColor = when (themeMode) {
-            "dark" -> "#FFFFFF".toColorInt()
-            "matrix" -> "#00FF41".toColorInt()
-            else -> "#000000".toColorInt()
-        }
 
-        // Reset visibility
         views.setViewVisibility(R.id.item_text_top, View.GONE)
         views.setViewVisibility(R.id.item_image, View.GONE)
         views.setViewVisibility(R.id.item_text_bottom, View.GONE)
@@ -135,7 +119,7 @@ class WidgetItemFactory(
         when (segment) {
             is NoteSegment.Text -> {
                 views.setTextViewText(R.id.item_text_top, segment.content)
-                views.setTextColor(R.id.item_text_top, textColor)
+                // Text color is now handled by XML using @color/widget_text
                 views.setViewVisibility(R.id.item_text_top, View.VISIBLE)
             }
             is NoteSegment.Image -> {

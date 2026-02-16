@@ -14,6 +14,9 @@ import android.widget.RemoteViews
 import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class StickyNoteWidget : AppWidgetProvider() {
 
@@ -32,11 +35,25 @@ class StickyNoteWidget : AppWidgetProvider() {
     }
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        val db = AppDatabase.getDatabase(context)
         val sharedPrefs = context.applicationContext.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
-        sharedPrefs.edit(commit = true) {
+        
+        CoroutineScope(Dispatchers.IO).launch {
             for (appWidgetId in appWidgetIds) {
-                remove("widget_title_$appWidgetId")
-                remove("saved_note_text_$appWidgetId")
+                val title = sharedPrefs.getString("widget_title_$appWidgetId", "") ?: ""
+                val content = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
+                
+                // Save to DB if the note has content
+                if (title.isNotEmpty() || content.isNotEmpty()) {
+                    db.noteDao().insert(Note(title = title, content = content, appWidgetId = -1))
+                }
+
+                sharedPrefs.edit(commit = true) {
+                    remove("widget_title_$appWidgetId")
+                    remove("saved_note_text_$appWidgetId")
+                    remove("widget_transparency_$appWidgetId")
+                    remove("widget_background_color_$appWidgetId")
+                }
             }
         }
     }
@@ -44,7 +61,6 @@ class StickyNoteWidget : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         
-        // Only open the editor automatically if this is the explicit pinning callback
         if (intent.action == ACTION_WIDGET_PINNED) {
             val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
             if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
@@ -70,25 +86,20 @@ fun updateAppWidget(
     val sharedPrefs = context.applicationContext.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
     
     val widgetTitle = sharedPrefs.getString("widget_title_$appWidgetId", "")
-    val themeMode = sharedPrefs.getString("widget_theme_mode", "light")
+    val transparency = sharedPrefs.getFloat("widget_transparency_$appWidgetId", 100f)
+    val backgroundColor = sharedPrefs.getString("widget_background_color_$appWidgetId", null)
 
-    val backgroundColor = when (themeMode) {
-        "dark" -> "#333333".toColorInt()
-        "matrix" -> "#000000".toColorInt()
-        else -> "#FFFFDD".toColorInt()
-    }
-    val textColor = when (themeMode) {
-        "dark" -> Color.WHITE
-        "matrix" -> "#00FF41".toColorInt()
-        else -> Color.BLACK
+    // Apply background color if set
+    if (backgroundColor != null) {
+        try {
+            views.setInt(R.id.widget_layout, "setBackgroundColor", backgroundColor.toColorInt())
+        } catch (e: Exception) {
+            // Ignore invalid colors
+        }
     }
 
-    views.setInt(R.id.widget_layout, "setBackgroundColor", backgroundColor)
-    views.setTextColor(R.id.widget_title_text, textColor)
-    views.setTextColor(R.id.appwidget_text, textColor)
-    views.setInt(R.id.button_menu, "setColorFilter", textColor)
-    views.setInt(R.id.button_add_note, "setColorFilter", textColor)
-    views.setInt(R.id.button_edit_note, "setColorFilter", textColor)
+    // Apply transparency
+    views.setFloat(R.id.widget_layout, "setAlpha", transparency / 100f)
 
     val titleToDisplay = if (!widgetTitle.isNullOrEmpty()) {
         SpannableString(widgetTitle).apply {
@@ -98,8 +109,6 @@ fun updateAppWidget(
         ""
     }
     views.setTextViewText(R.id.widget_title_text, titleToDisplay)
-    
-    // Keep title visible so it acts as a header even when empty
     views.setViewVisibility(R.id.widget_title_text, View.VISIBLE)
 
     val serviceIntent = Intent(context, WidgetService::class.java).apply {
@@ -107,7 +116,7 @@ fun updateAppWidget(
         data = "widget://service/$appWidgetId".toUri()
     }
     
-    views.setRemoteAdapter(appWidgetId, R.id.widget_list_view, serviceIntent)
+    views.setRemoteAdapter(R.id.widget_list_view, serviceIntent)
     views.setEmptyView(R.id.widget_list_view, R.id.appwidget_text)
 
     val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0

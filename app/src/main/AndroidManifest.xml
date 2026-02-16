@@ -22,6 +22,9 @@
                 android:resource="@xml/sticky_note_widget_info" />
         </receiver>
 
+        <receiver android:name=".WidgetPinnedReceiver"
+            android:exported="false" />
+
         <service
             android:name=".WidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
@@ -46,6 +49,12 @@
         <activity
             android:name=".SettingsActivity"
             android:label="Settings"
+            android:theme="@style/Theme.StickyN.Floating"
+            android:exported="false" />
+
+        <activity
+            android:name=".RestoreActivity"
+            android:label="Restore"
             android:theme="@style/Theme.StickyN.Floating"
             android:exported="false" />
 

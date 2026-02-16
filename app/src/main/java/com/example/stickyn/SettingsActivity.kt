@@ -1,11 +1,12 @@
 package com.example.stickyn
 
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.text.Html
+import android.text.method.LinkMovementMethod
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
 class SettingsActivity : AppCompatActivity() {
@@ -18,20 +19,17 @@ class SettingsActivity : AppCompatActivity() {
         val width = (resources.displayMetrics.widthPixels * 0.95).toInt()
         window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
 
+        val readmeText = findViewById<TextView>(R.id.text_readme)
+        readmeText.text = Html.fromHtml(getString(R.string.readme), Html.FROM_HTML_MODE_LEGACY)
+        readmeText.movementMethod = LinkMovementMethod.getInstance()
+
         findViewById<Button>(R.id.button_back).setOnClickListener {
             finish()
         }
-    }
 
-    private fun updateAllWidgets() {
-        val appWidgetManager = AppWidgetManager.getInstance(this)
-        val componentName = ComponentName(this, StickyNoteWidget::class.java)
-        val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
-
-        val intent = Intent(this, StickyNoteWidget::class.java).apply {
-            action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, appWidgetIds)
+        findViewById<Button>(R.id.button_restore).setOnClickListener {
+            startActivity(Intent(this, RestoreActivity::class.java))
+            finish()
         }
-        sendBroadcast(intent)
     }
 }

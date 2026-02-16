@@ -37,10 +37,7 @@ class PinWidgetActivity : AppCompatActivity() {
             )
 
             val success = appWidgetManager.requestPinAppWidget(myProvider, null, successCallback)
-            if (success) {
-                // Inform the user that a dialog should have appeared
-                Toast.makeText(this, "Add the widget to your home screen", Toast.LENGTH_SHORT).show()
-            } else {
+            if (!success) {
                 Toast.makeText(this, "Could not show pinning dialog", Toast.LENGTH_SHORT).show()
             }
         } else {
@@ -52,6 +49,6 @@ class PinWidgetActivity : AppCompatActivity() {
         // On some devices, finishing too fast kills the request.
         window.decorView.postDelayed({
             if (!isFinishing) finish()
-        }, 3000)
+        }, 1000)
     }
 }

@@ -615,7 +615,7 @@ class NoteEditActivity : AppCompatActivity() {
     private fun loadData() {
         val widgetTitleKey = "widget_title_$appWidgetId"
         val noteTextKey = "saved_note_text_$appWidgetId"
-        
+
         editTitle.setText("")
         editTextNote.setText("")
 
