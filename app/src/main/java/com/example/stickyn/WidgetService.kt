@@ -10,6 +10,7 @@ import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.text.Html
 import android.text.SpannableStringBuilder
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -30,6 +31,7 @@ class WidgetItemFactory(
 ) : RemoteViewsService.RemoteViewsFactory {
 
     private var noteText: String = ""
+    private var baseTextSize: Int = 18
     private val appWidgetId: Int = intent.getIntExtra(
         AppWidgetManager.EXTRA_APPWIDGET_ID,
         AppWidgetManager.INVALID_APPWIDGET_ID
@@ -47,6 +49,7 @@ class WidgetItemFactory(
     override fun onDataSetChanged() {
         val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
+        baseTextSize = sharedPrefs.getInt("widget_base_text_size_$appWidgetId", 18)
         parseSegments()
     }
 
@@ -119,7 +122,7 @@ class WidgetItemFactory(
         when (segment) {
             is NoteSegment.Text -> {
                 views.setTextViewText(R.id.item_text_top, segment.content)
-                // Text color is now handled by XML using @color/widget_text
+                views.setTextViewTextSize(R.id.item_text_top, TypedValue.COMPLEX_UNIT_SP, baseTextSize.toFloat())
                 views.setViewVisibility(R.id.item_text_top, View.VISIBLE)
             }
             is NoteSegment.Image -> {

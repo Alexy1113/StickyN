@@ -39,5 +39,5 @@
         ♻️ <b>Data Safety:</b> If you delete a widget, don\'t worry! It stays in memory and can be recovered via <b>Restore Notes</b>.<br/>
         _______________<br/><br/>
     ]]></string>
-    <string name="text_size_18">Text size 18</string>
+    <string name="normal_text_size">Normal text size</string>
 </resources>

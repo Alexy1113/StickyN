@@ -29,7 +29,7 @@
             android:name=".WidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
 
-        <!-- StickyN App Icon now acts as "Add Note" (Launcher Pinning) -->
+        <!-- StickyN App Icon acts as "Add Note" -->
         <activity
             android:name=".PinWidgetActivity"
             android:theme="@style/Theme.StickyN.Translucent"
@@ -40,7 +40,6 @@
             </intent-filter>
         </activity>
 
-        <!-- The note editor is a private activity, opened only from widgets -->
         <activity
             android:name=".NoteEditActivity"
             android:theme="@style/Theme.StickyN.Floating"

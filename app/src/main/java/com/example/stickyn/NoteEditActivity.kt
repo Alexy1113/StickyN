@@ -30,6 +30,7 @@ import android.text.style.ImageSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
+import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -93,9 +94,7 @@ class NoteEditActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Remove window background to allow custom rounded corners in activity_main.xml
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        
         setContentView(R.layout.activity_main)
 
         sharedPrefs = applicationContext.getSharedPreferences("NoteWidgetPrefs", MODE_PRIVATE)
@@ -108,12 +107,9 @@ class NoteEditActivity : AppCompatActivity() {
         buttonSave = findViewById(R.id.button_save)
         btnTextSize = findViewById(R.id.button_text_size)
 
-        // Make title underlined in the editor too
         editTitle.paintFlags = editTitle.paintFlags or Paint.UNDERLINE_TEXT_FLAG
 
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
-
-        // Use ArrowKeyMovementMethod but override touch for custom scroll behavior
         editTextNote.movementMethod = ArrowKeyMovementMethod.getInstance()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -129,7 +125,6 @@ class NoteEditActivity : AppCompatActivity() {
                     isScrolling = false
                     initialSelectionStart = editTextNote.selectionStart
                     initialSelectionEnd = editTextNote.selectionEnd
-                    // Return false to allow default EditText touch handling (long click, handles)
                     return@setOnTouchListener false
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -137,7 +132,6 @@ class NoteEditActivity : AppCompatActivity() {
                     val dy = event.y - lastTouchY
                     
                     if (!isScrolling && sqrt(dx.pow(2) + dy.pow(2)) > touchSlop) {
-                        // Only start custom scroll if we're not currently selecting text
                         if (editTextNote.selectionStart == editTextNote.selectionEnd) {
                             isScrolling = true
                         }
@@ -176,7 +170,6 @@ class NoteEditActivity : AppCompatActivity() {
                                 return@setOnTouchListener true
                             }
                         }
-                        // Return false to let EditText handle normal taps (cursor placement, etc.)
                         return@setOnTouchListener false
                     }
                 }
@@ -203,12 +196,18 @@ class NoteEditActivity : AppCompatActivity() {
 
         buttonSave.setOnClickListener {
             val titleText = editTitle.text.toString()
-            val noteText = Html.toHtml(editTextNote.text, Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE)
+            val editable = SpannableStringBuilder(editTextNote.text)
+            val sizeSpans = editable.getSpans(0, editable.length, AbsoluteSizeSpan::class.java)
+            for (span in sizeSpans) {
+                editable.removeSpan(span)
+            }
+            val noteText = Html.toHtml(editable, Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE)
             
             if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                 val success = sharedPrefs.edit().apply {
                     putString("widget_title_$appWidgetId", titleText)
                     putString("saved_note_text_$appWidgetId", noteText)
+                    putInt("widget_base_text_size_$appWidgetId", currentTextSize)
                 }.commit()
                 
                 if (success) {
@@ -274,26 +273,34 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun showTextSizeMenu(view: View) {
         val popup = PopupMenu(this, view)
-        val sizes = listOf(14, 18, 22, 26) // 1 down, default (18), 2 up
-        for (size in sizes) {
-            val title = SpannableString("$size")
-            // Apply text size to the menu item itself
+        // Shifted mapping: 14 -> Small, 18 -> Normal, 22 -> Big
+        val sizes = mapOf(14 to "Small", 18 to "Normal", 22 to "Big")
+        for ((size, label) in sizes) {
+            val title = SpannableString(label)
             title.setSpan(AbsoluteSizeSpan(size, true), 0, title.length, 0)
-            if (size == 18) {
-                // Default size is bold
-                title.setSpan(StyleSpan(Typeface.BOLD), 0, title.length, 0)
-            }
             val item = popup.menu.add(title)
             item.setOnMenuItemClickListener {
                 currentTextSize = size
-                if (editTextNote.hasSelection()) {
-                    applySpanToSelection(AbsoluteSizeSpan(size, true))
-                }
-                btnTextSize.text = "Text size $size"
+                applyTextSizeToViews(size)
+                btnTextSize.text = "$label text size"
                 true
             }
         }
         popup.show()
+    }
+
+    private fun applyTextSizeToViews(size: Int) {
+        val sizePx = size.toFloat()
+        editTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizePx)
+        editTextNote.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizePx)
+        
+        val editable = editTextNote.text
+        if (editable is Spannable) {
+            val spans = editable.getSpans(0, editable.length, AbsoluteSizeSpan::class.java)
+            for (span in spans) {
+                editable.removeSpan(span)
+            }
+        }
     }
 
     private fun insertImageFromUri(uri: Uri) {
@@ -304,7 +311,6 @@ class NoteEditActivity : AppCompatActivity() {
                 (resources.displayMetrics.widthPixels * 0.8).toInt()
             }
 
-            // Safe decoding using inSampleSize
             val bitmap = decodeSampledBitmapFromUri(uri, targetWidth, resources.displayMetrics.heightPixels)
 
             if (bitmap != null) {
@@ -316,13 +322,10 @@ class NoteEditActivity : AppCompatActivity() {
                 val selectionEnd = editTextNote.selectionEnd.coerceAtLeast(0)
                 
                 val builder = SpannableStringBuilder(editTextNote.text)
-                
-                // Add more natural spacing (1 newline before, 1 after)
                 val insertionText = "\n \n"
                 builder.replace(selectionStart, selectionEnd, insertionText)
                 
                 val imageIndex = selectionStart + 1
-                
                 val imageSpan = ImageSpan(drawable, uri.toString())
                 builder.setSpan(imageSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 
@@ -405,7 +408,6 @@ class NoteEditActivity : AppCompatActivity() {
                     }
                     spannable.delete(start, end)
                     
-                    // Also try to delete the file if it's in internal storage
                     if (uriString.startsWith("file://")) {
                         try {
                             val path = Uri.parse(uriString).path
@@ -500,9 +502,6 @@ class NoteEditActivity : AppCompatActivity() {
                     if (isItalic) spannable.setSpan(StyleSpan(Typeface.ITALIC), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     if (isUnderline) spannable.setSpan(UnderlineSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     if (isStrikethrough) spannable.setSpan(StrikethroughSpan(), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    if (currentTextSize != 18) {
-                        spannable.setSpan(AbsoluteSizeSpan(currentTextSize, true), start, addedTextEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    }
                 }
                 if (count != before) {
                     editTextNote.post { scrollToCursorIfNeeded() }
@@ -615,9 +614,14 @@ class NoteEditActivity : AppCompatActivity() {
     private fun loadData() {
         val widgetTitleKey = "widget_title_$appWidgetId"
         val noteTextKey = "saved_note_text_$appWidgetId"
+        val textSizeKey = "widget_base_text_size_$appWidgetId"
 
         editTitle.setText("")
         editTextNote.setText("")
+        
+        currentTextSize = sharedPrefs.getInt(textSizeKey, 18)
+        applyTextSizeToViews(currentTextSize)
+        btnTextSize.text = "${getTextSizeLabel(currentTextSize)} text size"
 
         if (sharedPrefs.contains(widgetTitleKey) || sharedPrefs.contains(noteTextKey)) {
             val savedTitle = sharedPrefs.getString(widgetTitleKey, "")
@@ -640,12 +644,10 @@ class NoteEditActivity : AppCompatActivity() {
                             drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
                             return@ImageGetter drawable
                         } else {
-                            // Bitmap is null, return placeholder
                             return@ImageGetter getPlaceholderDrawable(targetWidth)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        // Exception occurred, return placeholder
                         val targetWidth = if (editTextNote.width > 0) {
                             editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight
                         } else {
@@ -657,6 +659,11 @@ class NoteEditActivity : AppCompatActivity() {
 
                 val spanned = Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
                 val builder = SpannableStringBuilder(spanned)
+                
+                val loadedSpans = builder.getSpans(0, builder.length, AbsoluteSizeSpan::class.java)
+                for (span in loadedSpans) {
+                    builder.removeSpan(span)
+                }
                 
                 val imageSpans = builder.getSpans(0, builder.length, ImageSpan::class.java)
                 for (span in imageSpans) {
@@ -677,9 +684,17 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    private fun getTextSizeLabel(size: Int): String {
+        return when (size) {
+            14 -> "Small"
+            18 -> "Normal"
+            22 -> "Big"
+            else -> "Normal"
+        }
+    }
+
     private fun getPlaceholderDrawable(width: Int): Drawable {
-        // Simple placeholder: a gray rectangle with a border or icon (using a resource if available, or just a ColorDrawable)
-        val height = (width * 0.5).toInt() // Placeholder aspect ratio 2:1
+        val height = (width * 0.5).toInt()
         val drawable = ContextCompat.getDrawable(this, android.R.drawable.ic_menu_report_image) ?: ColorDrawable(Color.LTGRAY)
         drawable.setBounds(0, 0, width, height)
         return drawable

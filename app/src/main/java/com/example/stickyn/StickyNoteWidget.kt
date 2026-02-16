@@ -5,10 +5,10 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.os.Build
 import android.text.SpannableString
 import android.text.style.UnderlineSpan
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.content.edit
@@ -53,6 +53,7 @@ class StickyNoteWidget : AppWidgetProvider() {
                     remove("saved_note_text_$appWidgetId")
                     remove("widget_transparency_$appWidgetId")
                     remove("widget_background_color_$appWidgetId")
+                    remove("widget_base_text_size_$appWidgetId")
                 }
             }
         }
@@ -88,6 +89,7 @@ fun updateAppWidget(
     val widgetTitle = sharedPrefs.getString("widget_title_$appWidgetId", "")
     val transparency = sharedPrefs.getFloat("widget_transparency_$appWidgetId", 100f)
     val backgroundColor = sharedPrefs.getString("widget_background_color_$appWidgetId", null)
+    val baseTextSize = sharedPrefs.getInt("widget_base_text_size_$appWidgetId", 18)
 
     // Apply background color if set
     if (backgroundColor != null) {
@@ -109,6 +111,7 @@ fun updateAppWidget(
         ""
     }
     views.setTextViewText(R.id.widget_title_text, titleToDisplay)
+    views.setTextViewTextSize(R.id.widget_title_text, TypedValue.COMPLEX_UNIT_SP, baseTextSize.toFloat())
     views.setViewVisibility(R.id.widget_title_text, View.VISIBLE)
 
     val serviceIntent = Intent(context, WidgetService::class.java).apply {
