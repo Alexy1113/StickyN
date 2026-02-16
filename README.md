@@ -10,15 +10,12 @@ A minimalist and functional Sticky Notes widget for Android 8.0+ (API 26+). Keep
     *   ✏️ **Pencil Button**: Direct access to edit mode for instant updates.
     *   🔧 **Wrench Button**: Open widget-specific settings to customize your experience.
 *   **Adaptive Themes**: Automatically switches between **Dark** and **Light** modes based on your system-wide Android theme.
-
-## 🚀 Upcoming Features (Roadmap)
-
-We are working on bringing more customization to your notes:
+*   **Widget Safety**: Deleted a widget by mistake? Don’t worry! Your notes stay in memory and can be easily recovered via the Restore Notes menu.
+*   **Media Support:** Ability to attach images to your sticky notes.
 *   **Rich Text Formatting**: Support for **Bold**, *Italic*, and <u>Underlined</u> text.
-*   **Typography**: Adjustable text styles and custom font sizes.
-*   **Color Palette**: Custom text colors to highlight important info.
+*   **Typography**: Adjustable text size.
 *   **Smart Lists**: Toggleable bullet points for easy task management.
-*   **Visual Customization**: Ability to select custom backgrounds and transparency levels for each widget.
+*   **Data Persistence**: All notes are saved directly in the device's memory, and even deleted widgets can be recovered via the **Restore Notes** menu.
 
 ## 🛠 Setup & Installation
 
@@ -30,3 +27,4 @@ We are working on bringing more customization to your notes:
 ---
 ## 🧔 Contributor: 
   **Aleksei Vassimov**
+  [**TIP THE CREATOR ☕**](https://buymeacoffee.com/a13xy)
