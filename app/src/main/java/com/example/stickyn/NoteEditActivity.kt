@@ -57,6 +57,10 @@ import java.io.InputStream
 import kotlin.math.pow
 import kotlin.math.sqrt
 
+/**
+ * Main activity for editing sticky notes.
+ * Provides rich text formatting, image insertion, and text size adjustment.
+ */
 class NoteEditActivity : AppCompatActivity() {
 
     private lateinit var editTitle: EditText
@@ -66,6 +70,7 @@ class NoteEditActivity : AppCompatActivity() {
     private lateinit var sharedPrefs: SharedPreferences
     private var appWidgetId: Int = AppWidgetManager.INVALID_APPWIDGET_ID
 
+    // Formatting state
     private var isBold = false
     private var isItalic = false
     private var isUnderline = false
@@ -73,6 +78,7 @@ class NoteEditActivity : AppCompatActivity() {
     private var isBulletList = false
     private var currentTextSize = 18
 
+    // Touch and scroll state
     private var lastTouchX = 0f
     private var lastTouchY = 0f
     private var isScrolling = false
@@ -80,6 +86,7 @@ class NoteEditActivity : AppCompatActivity() {
     private var initialSelectionEnd = -1
     private var touchSlop = 0
 
+    /** Launcher for picking an image from the gallery. */
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let {
             val localUri = copyUriToInternalStorage(it)
@@ -93,12 +100,15 @@ class NoteEditActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
+        // Transparent window for custom rounded corners in layout
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         setContentView(R.layout.activity_main)
 
-        sharedPrefs = applicationContext.getSharedPreferences("NoteWidgetPrefs", MODE_PRIVATE)
+        @Suppress("DEPRECATION")
+        sharedPrefs = getSharedPreferences("NoteWidgetPrefs", MODE_PRIVATE or MODE_MULTI_PROCESS)
         
+        // Adjust activity width to 95% of screen
         val width = (resources.displayMetrics.widthPixels * 0.95).toInt()
         window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
 
@@ -107,16 +117,32 @@ class NoteEditActivity : AppCompatActivity() {
         buttonSave = findViewById(R.id.button_save)
         btnTextSize = findViewById(R.id.button_text_size)
 
+        // Title underlined by default
         editTitle.paintFlags = editTitle.paintFlags or Paint.UNDERLINE_TEXT_FLAG
 
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
         editTextNote.movementMethod = ArrowKeyMovementMethod.getInstance()
 
+        // Disable default drag handling
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             editTextNote.setOnDragListener(null)
         }
 
-        @SuppressLint("ClickableViewAccessibility")
+        setupTouchHandling()
+        setupFormattingButtons()
+        setupTextFormattingLogic()
+
+        handleIntent(intent)
+
+        buttonSave.setOnClickListener { saveNote() }
+    }
+
+    /**
+     * Configures custom touch handling for the note editor.
+     * Allows for both scrolling and text interaction (clicks/selection).
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupTouchHandling() {
         editTextNote.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -125,40 +151,40 @@ class NoteEditActivity : AppCompatActivity() {
                     isScrolling = false
                     initialSelectionStart = editTextNote.selectionStart
                     initialSelectionEnd = editTextNote.selectionEnd
-                    return@setOnTouchListener false
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - lastTouchX
                     val dy = event.y - lastTouchY
-                    
+
                     if (!isScrolling && sqrt(dx.pow(2) + dy.pow(2)) > touchSlop) {
                         if (editTextNote.selectionStart == editTextNote.selectionEnd) {
                             isScrolling = true
                         }
                     }
-                    
+
                     if (isScrolling) {
                         val scrollY = v.scrollY
                         val targetY = (scrollY - dy).toInt()
                         val visibleHeight = v.height - v.paddingTop - v.paddingBottom
                         val maxScroll = (editTextNote.layout?.height ?: 0) - visibleHeight
                         v.scrollTo(v.scrollX, targetY.coerceIn(0, maxScroll.coerceAtLeast(0)))
-                        
+
                         lastTouchX = event.x
                         lastTouchY = event.y
-                        
+
                         if (initialSelectionStart >= 0) {
                             editTextNote.setSelection(initialSelectionStart, initialSelectionEnd)
                         }
                         return@setOnTouchListener true
                     }
-                    return@setOnTouchListener false
+                    false
                 }
                 MotionEvent.ACTION_UP -> {
                     if (isScrolling) {
                         isScrolling = false
                         v.performClick()
-                        return@setOnTouchListener true
+                        true
                     } else {
                         val offset = getOffsetForPosition(event.x, event.y)
                         val text = editTextNote.text
@@ -170,11 +196,11 @@ class NoteEditActivity : AppCompatActivity() {
                                 return@setOnTouchListener true
                             }
                         }
-                        return@setOnTouchListener false
+                        false
                     }
                 }
+                else -> false
             }
-            false
         }
 
         editTextNote.setOnLongClickListener {
@@ -188,40 +214,60 @@ class NoteEditActivity : AppCompatActivity() {
             }
             false
         }
+    }
 
-        setupFormattingButtons()
-        setupTextFormattingLogic()
+    /** Saves current title, note content, and global text size. */
+    private fun saveNote() {
+        if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
+            Toast.makeText(this, "Error: Invalid Widget ID", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-        handleIntent(intent)
+        // 1. Подготовка данных
+        val titleText = editTitle.text.toString().trim()
+        val editable = SpannableStringBuilder(editTextNote.text)
 
-        buttonSave.setOnClickListener {
-            val titleText = editTitle.text.toString()
-            val editable = SpannableStringBuilder(editTextNote.text)
-            val sizeSpans = editable.getSpans(0, editable.length, AbsoluteSizeSpan::class.java)
-            for (span in sizeSpans) {
-                editable.removeSpan(span)
+        // Очистка временных спанов размера
+        val sizeSpans = editable.getSpans(0, editable.length, AbsoluteSizeSpan::class.java)
+        for (span in sizeSpans) {
+            editable.removeSpan(span)
+        }
+
+        val noteText = Html.toHtml(editable, Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE)
+
+        // 2. Сохранение (commit гарантирует немедленную запись на диск)
+        val success = sharedPrefs.edit().apply {
+            putString("widget_title_$appWidgetId", titleText)
+            putString("saved_note_text_$appWidgetId", noteText)
+            putInt("widget_base_text_size_$appWidgetId", currentTextSize)
+        }.commit()
+
+        if (success) {
+            val appWidgetManager = AppWidgetManager.getInstance(this)
+
+            // 3. Сообщаем системе, что настройка виджета завершена успешно
+            val resultValue = Intent().apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             }
-            val noteText = Html.toHtml(editable, Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE)
-            
-            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                val success = sharedPrefs.edit().apply {
-                    putString("widget_title_$appWidgetId", titleText)
-                    putString("saved_note_text_$appWidgetId", noteText)
-                    putInt("widget_base_text_size_$appWidgetId", currentTextSize)
-                }.commit()
-                
-                if (success) {
-                    updateWidget()
-                    Toast.makeText(this, "Note saved!", Toast.LENGTH_SHORT).show()
-                    finish()
-                } else {
-                    Toast.makeText(this, "Failed to save to disk.", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Toast.makeText(this, "Error: Widget ID missing.", Toast.LENGTH_SHORT).show()
+            setResult(RESULT_OK, resultValue)
+
+            // 4. Принудительное обновление через Broadcast
+            val updateIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+                `package` = packageName
             }
+            sendBroadcast(updateIntent)
+
+            // 5. Ручное обновление UI через вспомогательные функции
+            updateAppWidget(this, appWidgetManager, appWidgetId)
+            updateWidget()
+
+            finish()
+        } else {
+            Toast.makeText(this, "Failed to save to disk.", Toast.LENGTH_SHORT).show()
         }
     }
+
 
     private fun getOffsetForPosition(x: Float, y: Float): Int {
         val layout = editTextNote.layout ?: return 0
@@ -271,9 +317,9 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    /** Shows a popup menu to choose the global text size. */
     private fun showTextSizeMenu(view: View) {
         val popup = PopupMenu(this, view)
-        // Shifted mapping: 14 -> Small, 18 -> Normal, 22 -> Big
         val sizes = mapOf(14 to "Small", 18 to "Normal", 22 to "Big")
         for ((size, label) in sizes) {
             val title = SpannableString(label)
@@ -289,11 +335,12 @@ class NoteEditActivity : AppCompatActivity() {
         popup.show()
     }
 
+    /** Updates the text size of both title and note editor fields. */
     private fun applyTextSizeToViews(size: Int) {
         val sizePx = size.toFloat()
         editTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizePx)
         editTextNote.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizePx)
-        
+
         val editable = editTextNote.text
         if (editable is Spannable) {
             val spans = editable.getSpans(0, editable.length, AbsoluteSizeSpan::class.java)
@@ -303,6 +350,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    /** Inserts a local file image into the note at the cursor position. */
     private fun insertImageFromUri(uri: Uri) {
         try {
             val targetWidth = if (editTextNote.width > 0) {
@@ -320,22 +368,22 @@ class NoteEditActivity : AppCompatActivity() {
 
                 val selectionStart = editTextNote.selectionStart.coerceAtLeast(0)
                 val selectionEnd = editTextNote.selectionEnd.coerceAtLeast(0)
-                
+
                 val builder = SpannableStringBuilder(editTextNote.text)
                 val insertionText = "\n \n"
                 builder.replace(selectionStart, selectionEnd, insertionText)
-                
+
                 val imageIndex = selectionStart + 1
                 val imageSpan = ImageSpan(drawable, uri.toString())
                 builder.setSpan(imageSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                
+
                 val clickableSpan = object : ClickableSpan() {
                     override fun onClick(widget: View) {
                         showFullscreenImage(uri)
                     }
                 }
                 builder.setSpan(clickableSpan, imageIndex, imageIndex + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                
+
                 editTextNote.setText(builder)
                 editTextNote.setSelection(selectionStart + insertionText.length)
             } else {
@@ -347,12 +395,13 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    /** Copies an external URI image to internal app storage for reliable widget access. */
     private fun copyUriToInternalStorage(uri: Uri): Uri? {
         return try {
             val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(contentResolver.getType(uri)) ?: "png"
             val fileName = "note_image_${System.currentTimeMillis()}.$extension"
             val file = File(filesDir, fileName)
-            
+
             contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(file).use { output ->
                     input.copyTo(output)
@@ -365,6 +414,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    /** Shows inserted image in a full-screen dialog with deletion option. */
     private fun showFullscreenImage(uri: Uri) {
         val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -382,7 +432,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
 
         btnClose.setOnClickListener { dialog.dismiss() }
-        
+
         btnDelete.setOnClickListener {
             deleteImageFromNote(uri.toString())
             dialog.dismiss()
@@ -407,7 +457,7 @@ class NoteEditActivity : AppCompatActivity() {
                         }
                     }
                     spannable.delete(start, end)
-                    
+
                     if (uriString.startsWith("file://")) {
                         try {
                             val path = Uri.parse(uriString).path
@@ -491,6 +541,7 @@ class NoteEditActivity : AppCompatActivity() {
         text.replace(start, end, builder)
     }
 
+    /** Listens for text changes to auto-apply active formatting (bold, italic, etc.). */
     private fun setupTextFormattingLogic() {
         editTextNote.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -514,24 +565,16 @@ class NoteEditActivity : AppCompatActivity() {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 val selectionStart = editTextNote.selectionStart
                 val selectionEnd = editTextNote.selectionEnd
-                
+
                 if (keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_FORWARD_DEL) {
                     val spannable = editTextNote.text
                     val rangeStart = if (keyCode == KeyEvent.KEYCODE_DEL) selectionStart - 1 else selectionStart
                     val rangeEnd = if (keyCode == KeyEvent.KEYCODE_DEL) selectionStart else selectionStart + 1
-                    
+
                     if (rangeStart >= 0 && rangeEnd <= spannable.length) {
                         val imageSpans = spannable.getSpans(rangeStart, rangeEnd, ImageSpan::class.java)
                         if (imageSpans.isNotEmpty()) {
                             Toast.makeText(this, "Tap image to delete from fullscreen", Toast.LENGTH_SHORT).show()
-                            return@setOnKeyListener true
-                        }
-                    }
-                    
-                    if (selectionStart != selectionEnd) {
-                        val imageSpans = spannable.getSpans(selectionStart, selectionEnd, ImageSpan::class.java)
-                        if (imageSpans.isNotEmpty()) {
-                            Toast.makeText(this, "Selection contains images. Delete them individually.", Toast.LENGTH_SHORT).show()
                             return@setOnKeyListener true
                         }
                     }
@@ -551,21 +594,21 @@ class NoteEditActivity : AppCompatActivity() {
         val layout = editTextNote.layout ?: return
         val selectionStart = editTextNote.selectionStart
         if (selectionStart < 0) return
-        
+
         val line = layout.getLineForOffset(selectionStart)
         val lineTop = layout.getLineTop(line)
         val lineBottom = layout.getLineBottom(line)
-        
+
         val currentScrollY = editTextNote.scrollY
         val editTextVisibleHeight = editTextNote.height - editTextNote.totalPaddingTop - editTextNote.totalPaddingBottom
-        
+
         val isOutOfSight = lineTop < currentScrollY || lineBottom > (currentScrollY + editTextVisibleHeight)
-        
+
         if (isOutOfSight) {
             val targetScrollY = (lineTop + lineBottom) / 2 - editTextVisibleHeight / 2
             val maxScrollY = layout.height - editTextVisibleHeight
             val safeScrollY = targetScrollY.coerceIn(0, maxScrollY.coerceAtLeast(0))
-            
+
             editTextNote.scrollTo(0, safeScrollY)
         }
     }
@@ -586,10 +629,11 @@ class NoteEditActivity : AppCompatActivity() {
         handleIntent(intent)
     }
 
+    /** Resolves the appWidgetId from extras or deep link URI. */
     private fun handleIntent(intent: Intent?) {
         val currentIntent = intent ?: return
         var incomingId = currentIntent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-        
+
         if (incomingId == AppWidgetManager.INVALID_APPWIDGET_ID) {
             val data = currentIntent.data
             if (data != null && data.scheme == "widget") {
@@ -604,13 +648,15 @@ class NoteEditActivity : AppCompatActivity() {
                 loadData()
             }
         }
-        
+
         editTextNote.requestFocus()
         editTextNote.setSelection(editTextNote.text.length)
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showSoftInput(editTextNote, InputMethodManager.SHOW_IMPLICIT)
     }
 
+    /** Loads note title, content, and size from SharedPreferences. */
+    /** Loads note title, content, and size from SharedPreferences. */
     private fun loadData() {
         val widgetTitleKey = "widget_title_$appWidgetId"
         val noteTextKey = "saved_note_text_$appWidgetId"
@@ -618,15 +664,17 @@ class NoteEditActivity : AppCompatActivity() {
 
         editTitle.setText("")
         editTextNote.setText("")
-        
+
         currentTextSize = sharedPrefs.getInt(textSizeKey, 18)
         applyTextSizeToViews(currentTextSize)
-        btnTextSize.text = "${getTextSizeLabel(currentTextSize)} text size"
+        val sizes = mapOf(14 to "Small", 18 to "Normal", 22 to "Big")
+        btnTextSize.text = "${sizes[currentTextSize] ?: "Normal"} text size"
 
         if (sharedPrefs.contains(widgetTitleKey) || sharedPrefs.contains(noteTextKey)) {
             val savedTitle = sharedPrefs.getString(widgetTitleKey, "")
             val savedNote = sharedPrefs.getString(noteTextKey, "")
             editTitle.setText(savedTitle)
+
             if (!savedNote.isNullOrEmpty()) {
                 val imageGetter = Html.ImageGetter { source ->
                     try {
@@ -636,7 +684,7 @@ class NoteEditActivity : AppCompatActivity() {
                         } else {
                             (resources.displayMetrics.widthPixels * 0.8).toInt()
                         }
-                        
+
                         val bitmap = decodeSampledBitmapFromUri(uri, targetWidth, resources.displayMetrics.heightPixels)
                         if (bitmap != null) {
                             val scaledBitmap = scaleBitmap(bitmap, targetWidth)
@@ -647,7 +695,6 @@ class NoteEditActivity : AppCompatActivity() {
                             return@ImageGetter getPlaceholderDrawable(targetWidth)
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
                         val targetWidth = if (editTextNote.width > 0) {
                             editTextNote.width - editTextNote.paddingLeft - editTextNote.paddingRight
                         } else {
@@ -659,12 +706,12 @@ class NoteEditActivity : AppCompatActivity() {
 
                 val spanned = Html.fromHtml(savedNote, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
                 val builder = SpannableStringBuilder(spanned)
-                
+
                 val loadedSpans = builder.getSpans(0, builder.length, AbsoluteSizeSpan::class.java)
                 for (span in loadedSpans) {
                     builder.removeSpan(span)
                 }
-                
+
                 val imageSpans = builder.getSpans(0, builder.length, ImageSpan::class.java)
                 for (span in imageSpans) {
                     val start = builder.getSpanStart(span)
@@ -678,19 +725,22 @@ class NoteEditActivity : AppCompatActivity() {
                     }
                     builder.setSpan(clickableSpan, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
-                
+
                 editTextNote.setText(builder)
             }
         }
-    }
 
-    private fun getTextSizeLabel(size: Int): String {
-        return when (size) {
-            14 -> "Small"
-            18 -> "Normal"
-            22 -> "Big"
-            else -> "Normal"
-        }
+        // --- АНИМАЦИЯ ПОЯВЛЕНИЯ ---
+        val container = findViewById<View>(R.id.main_content_container)
+        container.animate()
+            .alpha(1f)
+            .setDuration(50)
+            .withEndAction {
+                if (editTextNote.requestFocus()) {
+                    editTextNote.setSelection(editTextNote.text.length)
+                }
+            }
+            .start()
     }
 
     private fun getPlaceholderDrawable(width: Int): Drawable {
@@ -700,20 +750,21 @@ class NoteEditActivity : AppCompatActivity() {
         return drawable
     }
 
+    /** Triggers a broadcast refresh for all sticky note widgets on the home screen. */
     private fun updateWidget() {
         val appWidgetManager = AppWidgetManager.getInstance(this)
         val componentName = ComponentName(this, StickyNoteWidget::class.java)
         val ids = appWidgetManager.getAppWidgetIds(componentName)
-        
+
         for (id in ids) {
             updateAppWidget(this, appWidgetManager, id)
         }
 
-        editTextNote.postDelayed({
+        // Используем decorView для задержки, чтобы избежать Unresolved reference
+        window.decorView.postDelayed({
             for (id in ids) {
-                @Suppress("DEPRECATION")
                 appWidgetManager.notifyAppWidgetViewDataChanged(id, R.id.widget_list_view)
             }
-        }, 500)
+        }, 300)
     }
-}
+} // <--- ФИНАЛЬНАЯ СКОБКА КЛАССА

@@ -15,16 +15,21 @@ import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import androidx.core.graphics.scale
-import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
 import android.text.style.ImageSpan
 
+/**
+ * Service that provides the RemoteViewsFactory for the scrollable list in the widget.
+ */
 class WidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
         return WidgetItemFactory(applicationContext, intent)
     }
 }
 
+/**
+ * Factory class that generates individual items (text or images) for the widget's ListView.
+ */
 class WidgetItemFactory(
     private val context: Context,
     intent: Intent
@@ -46,8 +51,12 @@ class WidgetItemFactory(
 
     override fun onCreate() {}
 
+    /** Triggered when the widget data is refreshed. */
     override fun onDataSetChanged() {
-        val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_PRIVATE)
+        // Use MODE_MULTI_PROCESS to ensure we see the data just saved by the Activity
+        @Suppress("DEPRECATION")
+        val sharedPrefs = context.getSharedPreferences("NoteWidgetPrefs", Context.MODE_MULTI_PROCESS)
+        
         noteText = sharedPrefs.getString("saved_note_text_$appWidgetId", "") ?: ""
         baseTextSize = sharedPrefs.getInt("widget_base_text_size_$appWidgetId", 18)
         parseSegments()
@@ -60,7 +69,6 @@ class WidgetItemFactory(
         val imageGetter = Html.ImageGetter { ColorDrawable(Color.TRANSPARENT) }
         val fullSpanned = Html.fromHtml(noteText, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
         val imageSpans = fullSpanned.getSpans(0, fullSpanned.length, ImageSpan::class.java)
-        
         val sortedSpans = imageSpans.sortedBy { fullSpanned.getSpanStart(it) }
 
         var lastEnd = 0
@@ -71,24 +79,16 @@ class WidgetItemFactory(
             if (start > lastEnd) {
                 val textPart = fullSpanned.subSequence(lastEnd, start)
                 val cleaned = cleanText(textPart)
-                if (cleaned.isNotEmpty()) {
-                    segments.add(NoteSegment.Text(cleaned))
-                }
+                if (cleaned.isNotEmpty()) segments.add(NoteSegment.Text(cleaned))
             }
-
-            span.source?.let {
-                segments.add(NoteSegment.Image(it))
-            }
-
+            span.source?.let { segments.add(NoteSegment.Image(it)) }
             lastEnd = end
         }
 
         if (lastEnd < fullSpanned.length) {
             val remainingText = fullSpanned.subSequence(lastEnd, fullSpanned.length)
             val cleaned = cleanText(remainingText)
-            if (cleaned.isNotEmpty()) {
-                segments.add(NoteSegment.Text(cleaned))
-            }
+            if (cleaned.isNotEmpty()) segments.add(NoteSegment.Text(cleaned))
         }
     }
 
@@ -96,18 +96,10 @@ class WidgetItemFactory(
         val sb = SpannableStringBuilder(s)
         var i = 0
         while (i < sb.length) {
-            if (sb[i] == '\uFFFC') {
-                sb.delete(i, i + 1)
-            } else {
-                i++
-            }
+            if (sb[i] == '\uFFFC') sb.delete(i, i + 1) else i++
         }
         return trimSpanned(sb)
     }
-
-    override fun onDestroy() {}
-
-    override fun getCount(): Int = segments.size
 
     override fun getViewAt(position: Int): RemoteViews {
         if (position >= segments.size) return RemoteViews(context.packageName, R.layout.widget_note_item)
@@ -117,7 +109,6 @@ class WidgetItemFactory(
 
         views.setViewVisibility(R.id.item_text_top, View.GONE)
         views.setViewVisibility(R.id.item_image, View.GONE)
-        views.setViewVisibility(R.id.item_text_bottom, View.GONE)
 
         when (segment) {
             is NoteSegment.Text -> {
@@ -127,25 +118,16 @@ class WidgetItemFactory(
             }
             is NoteSegment.Image -> {
                 try {
-                    val uri = segment.uriString.toUri()
-                    val maxWidth = 600
-                    val maxHeight = 800
-                    
-                    val bitmap = decodeSampledBitmapFromUri(uri, maxWidth, maxHeight)
+                    val bitmap = decodeSampledBitmapFromUri(segment.uriString.toUri(), 600, 800)
                     if (bitmap != null) {
-                        val finalBitmap = scaleBitmap(bitmap, maxWidth)
-                        views.setImageViewBitmap(R.id.item_image, finalBitmap)
+                        views.setImageViewBitmap(R.id.item_image, scaleBitmap(bitmap, 600))
                         views.setViewVisibility(R.id.item_image, View.VISIBLE)
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                } catch (e: Exception) {}
             }
         }
 
-        val fillInIntent = Intent().apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-        }
+        val fillInIntent = Intent().apply { putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId) }
         views.setOnClickFillInIntent(R.id.item_text_top, fillInIntent)
         views.setOnClickFillInIntent(R.id.item_image, fillInIntent)
 
@@ -154,57 +136,24 @@ class WidgetItemFactory(
 
     private fun decodeSampledBitmapFromUri(uri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
         return try {
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream, null, options)
-            }
-
-            options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
-            options.inJustDecodeBounds = false
-
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream, null, options)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-        val (height: Int, width: Int) = options.outHeight to options.outWidth
-        var inSampleSize = 1
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight: Int = height / 2
-            val halfWidth: Int = width / 2
-            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        } catch (e: Exception) { null }
     }
 
     private fun scaleBitmap(bitmap: Bitmap, maxWidth: Int): Bitmap {
         if (maxWidth <= 0 || bitmap.width <= maxWidth) return bitmap
-        val aspectRatio = bitmap.height.toFloat() / bitmap.width.toFloat()
-        val height = (maxWidth * aspectRatio).toInt()
-        return bitmap.scale(maxWidth, height, true)
+        return bitmap.scale(maxWidth, (maxWidth * (bitmap.height.toFloat() / bitmap.width)).toInt(), true)
     }
 
     private fun trimSpanned(s: CharSequence): CharSequence {
-        var start = 0
-        var end = s.length
-        while (start < end && Character.isWhitespace(s[start])) {
-            start++
-        }
-        while (end > start && Character.isWhitespace(s[end - 1])) {
-            end--
-        }
+        var start = 0; var end = s.length
+        while (start < end && Character.isWhitespace(s[start])) start++
+        while (end > start && Character.isWhitespace(s[end - 1])) end--
         return if (start < end) s.subSequence(start, end) else ""
     }
 
+    override fun onDestroy() { segments.clear() }
+    override fun getCount(): Int = segments.size
     override fun getLoadingView(): RemoteViews? = null
     override fun getViewTypeCount(): Int = 1
     override fun getItemId(position: Int): Long = position.toLong()

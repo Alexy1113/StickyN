@@ -40,4 +40,5 @@
         _______________<br/><br/>
     ]]></string>
     <string name="normal_text_size">Normal text size</string>
+    <string name="backup_list_is_empty">No notes to restore</string>
 </resources>

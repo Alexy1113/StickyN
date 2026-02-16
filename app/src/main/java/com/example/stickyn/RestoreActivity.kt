@@ -23,6 +23,10 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
 
+/**
+ * Activity that displays a list of notes backed up from deleted widgets.
+ * Allows users to either permanently delete them or restore them as new pinned widgets.
+ */
 class RestoreActivity : AppCompatActivity() {
 
     private lateinit var recyclerView: RecyclerView
@@ -33,6 +37,7 @@ class RestoreActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_restore_notes)
 
+        // Set specific window dimensions for floating look
         val width = (resources.displayMetrics.widthPixels * 0.95).toInt()
         val height = (resources.displayMetrics.heightPixels * 0.8).toInt()
         window.setLayout(width, height)
@@ -47,13 +52,14 @@ class RestoreActivity : AppCompatActivity() {
         loadNotes()
     }
 
+    /** Fetches backup notes from the Room database and populates the recycler view. */
     private fun loadNotes() {
         lifecycleScope.launch {
             val notes = AppDatabase.getDatabase(this@RestoreActivity).noteDao().getDeletedNotes()
             notesList.clear()
             notesList.addAll(notes)
-            adapter = RestoreAdapter(notesList, 
-                onRestoreClick = { note, position -> 
+            adapter = RestoreAdapter(notesList,
+                onRestoreClick = { note, position ->
                     restoreWidget(this@RestoreActivity, note.id)
                     fadeAwayItem(position)
                 },
@@ -63,6 +69,7 @@ class RestoreActivity : AppCompatActivity() {
         }
     }
 
+    /** Visual effect to remove an item from the list with an animation. */
     private fun fadeAwayItem(position: Int) {
         val viewHolder = recyclerView.findViewHolderForAdapterPosition(position)
         if (viewHolder != null) {
@@ -78,7 +85,6 @@ class RestoreActivity : AppCompatActivity() {
                 }
                 .start()
         } else {
-            // Fallback if view is not visible or already recycled
             if (position < notesList.size) {
                 notesList.removeAt(position)
                 adapter.notifyItemRemoved(position)
@@ -87,6 +93,7 @@ class RestoreActivity : AppCompatActivity() {
         }
     }
 
+    /** Shows a confirmation dialog before permanent deletion. */
     private fun showDeleteConfirmation(note: Note) {
         val dialog = Dialog(this)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -111,6 +118,7 @@ class RestoreActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    /** Removes the note record from the Room database. */
     private fun deletePermanently(note: Note) {
         lifecycleScope.launch {
             AppDatabase.getDatabase(this@RestoreActivity).noteDao().delete(note)
@@ -122,6 +130,7 @@ class RestoreActivity : AppCompatActivity() {
         }
     }
 
+    /** Requests the system to pin a new widget instance using the data from a backup note. */
     private fun restoreWidget(context: Context, noteId: Int) {
         val appWidgetManager = AppWidgetManager.getInstance(context)
         val myProvider = ComponentName(context, StickyNoteWidget::class.java)
@@ -144,6 +153,7 @@ class RestoreActivity : AppCompatActivity() {
         }
     }
 
+    /** Adapter for managing the list of restorable notes. */
     private inner class RestoreAdapter(
         private val notes: List<Note>,
         private val onRestoreClick: (Note, Int) -> Unit,
@@ -166,7 +176,6 @@ class RestoreActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val note = notes[position]
-            // Reset alpha in case the view was recycled
             holder.itemView.alpha = 1f
             
             holder.numberText.text = "${position + 1}."

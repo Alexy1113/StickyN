@@ -10,11 +10,15 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
+/**
+ * Transparent activity that triggers the system "Add Widget" dialog.
+ * This acts as the main entry point when the user clicks the app icon.
+ */
 class PinWidgetActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Use a simple view
+        // Use a simple view since this activity is translucent and transient
         setContentView(View(this))
 
         val appWidgetManager = AppWidgetManager.getInstance(this)
@@ -23,7 +27,7 @@ class PinWidgetActivity : AppCompatActivity() {
         if (appWidgetManager.isRequestPinAppWidgetSupported) {
             val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
             
-            // We use a unique request code to avoid any collision
+            // Unique request code for the broadcast callback
             val requestCode = 42
             val intent = Intent(this, StickyNoteWidget::class.java).apply {
                 action = StickyNoteWidget.ACTION_WIDGET_PINNED
@@ -36,6 +40,7 @@ class PinWidgetActivity : AppCompatActivity() {
                 PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag
             )
 
+            // Request the OS to show the widget pinning dialog
             val success = appWidgetManager.requestPinAppWidget(myProvider, null, successCallback)
             if (!success) {
                 Toast.makeText(this, "Could not show pinning dialog", Toast.LENGTH_SHORT).show()
@@ -44,9 +49,7 @@ class PinWidgetActivity : AppCompatActivity() {
             Toast.makeText(this, "Pinning not supported by your launcher", Toast.LENGTH_SHORT).show()
         }
 
-        // We'll keep the activity alive for a bit longer and only finish if it's not the one
-        // currently "hosting" the system dialog's context (though the dialog is system-level).
-        // On some devices, finishing too fast kills the request.
+        // Delay finishing to ensure the system dialog has time to initialize
         window.decorView.postDelayed({
             if (!isFinishing) finish()
         }, 1000)
